@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evaluador de Meta de Gestión: Catastro Comercial</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="src/style.css">
+  
+  <!-- Offline-capable vendor scripts -->
+  <script src="assets/vendor/xlsx.full.min.js"></script>
+  <script src="assets/vendor/chart.umd.min.js"></script>
+  <script src="assets/vendor/lucide.min.js"></script>
+  <script src="assets/vendor/confetti.browser.min.js"></script>
+</head>
+<body class="theme-light">
+  <div class="app-container">
+    
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-badge">
+          <i data-lucide="layers" class="logo-icon"></i>
+        </div>
+        <div>
+          <div class="badge-tag">Regulación de Servicios de Saneamiento</div>
+          <h1 class="app-title">Evaluador de Catastro Comercial</h1>
+          <p class="app-subtitle">Cruce y validación tripartita: Conexiones Totales × Fichas Catastrales × Plataforma GIS</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-load-demo" class="btn btn-secondary" title="Cargar 3 bases de datos de prueba automáticamente">
+          <i data-lucide="sparkles"></i>
+          <span>Cargar Datos de Ejemplo</span>
+        </button>
+        <button id="btn-reset-all" class="btn btn-outline" title="Reiniciar evaluación">
+          <i data-lucide="rotate-ccw"></i>
+          <span>Limpiar</span>
+        </button>
+        <button id="btn-toggle-theme" class="btn btn-icon" title="Cambiar tema">
+          <i data-lucide="moon" id="theme-icon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="main-content">
+      
+      <!-- Stepper / Progress Bar -->
+      <nav class="stepper-bar">
+        <div class="step-item active" data-step="1">
+          <div class="step-number">1</div>
+          <div class="step-label">Año Regulatorio & Archivos</div>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" data-step="2">
+          <div class="step-number">2</div>
+          <div class="step-label">Mapeo de Columnas</div>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" data-step="3">
+          <div class="step-number">3</div>
+          <div class="step-label">Tablero de Evaluación</div>
+        </div>
+      </nav>
+
+      <!-- SECTION 1: Config & Uploads -->
+      <section id="section-config-upload" class="workspace-section">
+        
+        <!-- Parameter Box: Regulatory Year & Target -->
+        <div class="card param-card">
+          <div class="card-header">
+            <div class="card-header-icon bg-blue-subtle">
+              <i data-lucide="calendar" class="text-blue"></i>
+            </div>
+            <div>
+              <h2 class="card-title">1. Definición del Año Regulatorio en Evaluación</h2>
+              <p class="card-description">
+                El año regulatorio es el criterio fundamental para validar que el levantamiento de fichas catastrales y su incorporación en GIS correspondan al periodo auditado.
+              </p>
+            </div>
+          </div>
+          
+          <div class="param-grid">
+            <div class="form-group">
+              <label for="eval-year" class="form-label">
+                Año Regulatorio a Evaluar <span class="required">*</span>
+              </label>
+              <div class="input-with-icon">
+                <i data-lucide="calendar-check"></i>
+                <input type="number" id="eval-year" class="form-input" min="2000" max="2035" value="2025">
+              </div>
+              <span class="form-hint">Las Fichas Catastrales y registros GIS deben tener fecha dentro de este año.</span>
+            </div>
+
+            <div class="form-group">
+              <label for="date-range-mode" class="form-label">Filtro de Fechas</label>
+              <select id="date-range-mode" class="form-select">
+                <option value="year" selected>Todo el Año Regulatorio (01/01 al 31/12)</option>
+                <option value="custom">Rango Personalizado de Fechas</option>
+              </select>
+              <span class="form-hint">Opciones flexibles para periodos de ciclo regulatorio.</span>
+            </div>
+
+            <div class="form-group">
+              <label for="eps-name" class="form-label">Empresa Prestadora (EPS / Prestador)</label>
+              <div class="input-with-icon">
+                <i data-lucide="building-2"></i>
+                <input type="text" id="eps-name" class="form-input" placeholder="Ej: EPS EMAPAS S.A." value="EPS SEDAPAL S.A.">
+              </div>
+              <span class="form-hint">Identificación para el informe y archivo consolidado.</span>
+            </div>
+          </div>
+
+          <!-- Custom Date Range Row (Hidden by default) -->
+          <div id="custom-range-container" class="custom-range-row hidden">
+            <div class="form-group">
+              <label for="start-date" class="form-label">Fecha Inicio</label>
+              <input type="date" id="start-date" class="form-input" value="2025-01-01">
+            </div>
+            <div class="form-group">
+              <label for="end-date" class="form-label">Fecha Fin</label>
+              <input type="date" id="end-date" class="form-input" value="2025-12-31">
+            </div>
+          </div>
+        </div>
+
+        <!-- The 3 File Upload Dropzones -->
+        <div class="upload-grid-title">
+          <div class="card-header-icon bg-emerald-subtle">
+            <i data-lucide="file-spreadsheet" class="text-emerald"></i>
+          </div>
+          <div>
+            <h2 class="card-title">2. Carga de las 3 Bases de Datos Remitidas por la Empresa</h2>
+            <p class="card-description">Arrastra o selecciona los archivos Excel (.xlsx, .xls, .csv). El sistema detectará automáticamente las columnas clave.</p>
+          </div>
+        </div>
+
+        <div class="upload-cards-grid">
+          
+          <!-- Base 1: Conexiones Totales -->
+          <div class="upload-card" id="dropzone-base1">
+            <div class="upload-badge base1-badge">Base 1</div>
+            <div class="upload-icon-wrapper">
+              <i data-lucide="database"></i>
+            </div>
+            <h3 class="upload-card-title">Conexiones Totales</h3>
+            <p class="upload-card-desc">
+              Padrón general de conexiones existentes (Agua potable y/o alcantarillado). Representa el inventario total base.
+            </p>
+            <div class="rule-pill rule-neutral" id="rule-pill-base1">
+              <i data-lucide="info" id="rule-icon-base1"></i>
+              <span id="rule-text-base1">No requiere coincidir con año de evaluación (opcional)</span>
+            </div>
+
+            <div class="dropzone-area" id="area-base1">
+              <input type="file" id="file-base1" accept=".xlsx,.xls,.xlsb,.csv" multiple class="file-input-hidden">
+              <div class="dropzone-content">
+                <i data-lucide="upload-cloud" class="dropzone-icon"></i>
+                <span class="dropzone-text">Arrastra uno o varios archivos aquí</span>
+                <span class="dropzone-sub">.xlsx, .xls, .xlsb, .csv (individual o por localidades)</span>
+              </div>
+            </div>
+
+            <!-- Uploaded Files Summary -->
+            <div class="file-summary hidden" id="summary-base1">
+              <div class="file-summary-header">
+                <div class="summary-total-badge">
+                  <i data-lucide="layers" class="text-blue"></i>
+                  <span id="meta-base1">0 archivos | 0 filas</span>
+                </div>
+                <div class="summary-actions">
+                  <button type="button" class="btn btn-outline btn-xs btn-add-more" data-base="1" title="Agregar más archivos / localidades">
+                    <i data-lucide="plus"></i> Agregar
+                  </button>
+                  <button type="button" class="btn btn-outline btn-xs btn-clear-base text-rose" data-base="1" title="Quitar todos los archivos de Base 1">
+                    <i data-lucide="trash-2"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="files-list" id="files-list-base1"></div>
+              <div class="summary-drop-hint" data-base="1" title="Haz clic o arrastra más archivos para esta base">
+                <i data-lucide="plus-circle"></i> Arrastrar o hacer clic para agregar más
+              </div>
+            </div>
+          </div>
+
+          <!-- Base 2: Fichas Catastrales -->
+          <div class="upload-card" id="dropzone-base2">
+            <div class="upload-badge base2-badge">Base 2</div>
+            <div class="upload-icon-wrapper">
+              <i data-lucide="clipboard-check"></i>
+            </div>
+            <h3 class="upload-card-title">Fichas Catastrales</h3>
+            <p class="upload-card-desc">
+              Registro de conexiones catastradas en campo mediante ficha catastral (censo comercial).
+            </p>
+            <div class="rule-pill rule-strict">
+              <i data-lucide="calendar-alert"></i>
+              <span>Fecha OBLIGATORIA en el año evaluado</span>
+            </div>
+
+            <div class="dropzone-area" id="area-base2">
+              <input type="file" id="file-base2" accept=".xlsx,.xls,.xlsb,.csv" multiple class="file-input-hidden">
+              <div class="dropzone-content">
+                <i data-lucide="upload-cloud" class="dropzone-icon"></i>
+                <span class="dropzone-text">Arrastra uno o varios archivos aquí</span>
+                <span class="dropzone-sub">.xlsx, .xls, .xlsb, .csv (individual o por localidades)</span>
+              </div>
+            </div>
+
+            <!-- Uploaded Files Summary -->
+            <div class="file-summary hidden" id="summary-base2">
+              <div class="file-summary-header">
+                <div class="summary-total-badge">
+                  <i data-lucide="layers" class="text-emerald"></i>
+                  <span id="meta-base2">0 archivos | 0 filas</span>
+                </div>
+                <div class="summary-actions">
+                  <button type="button" class="btn btn-outline btn-xs btn-add-more" data-base="2" title="Agregar más archivos / localidades">
+                    <i data-lucide="plus"></i> Agregar
+                  </button>
+                  <button type="button" class="btn btn-outline btn-xs btn-clear-base text-rose" data-base="2" title="Quitar todos los archivos de Base 2">
+                    <i data-lucide="trash-2"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="files-list" id="files-list-base2"></div>
+              <div class="summary-drop-hint" data-base="2" title="Haz clic o arrastra más archivos para esta base">
+                <i data-lucide="plus-circle"></i> Arrastrar o hacer clic para agregar más
+              </div>
+            </div>
+          </div>
+
+          <!-- Base 3: Tabla Atributiva GIS -->
+          <div class="upload-card" id="dropzone-base3">
+            <div class="upload-badge base3-badge">Base 3</div>
+            <div class="upload-icon-wrapper">
+              <i data-lucide="map-pin"></i>
+            </div>
+            <h3 class="upload-card-title">Tabla Atributiva GIS</h3>
+            <p class="upload-card-desc">
+              Información georreferenciada de la plataforma gráfica GIS. Verifica la digitalización cartográfica.
+            </p>
+            <div class="rule-pill rule-strict">
+              <i data-lucide="calendar-alert"></i>
+              <span>Fecha OBLIGATORIA en el año evaluado</span>
+            </div>
+
+            <div class="dropzone-area" id="area-base3">
+              <input type="file" id="file-base3" accept=".xlsx,.xls,.xlsb,.csv" multiple class="file-input-hidden">
+              <div class="dropzone-content">
+                <i data-lucide="upload-cloud" class="dropzone-icon"></i>
+                <span class="dropzone-text">Arrastra uno o varios archivos aquí</span>
+                <span class="dropzone-sub">.xlsx, .xls, .xlsb, .csv (individual o por localidades)</span>
+              </div>
+            </div>
+
+            <!-- Uploaded Files Summary -->
+            <div class="file-summary hidden" id="summary-base3">
+              <div class="file-summary-header">
+                <div class="summary-total-badge">
+                  <i data-lucide="layers" class="text-purple"></i>
+                  <span id="meta-base3">0 archivos | 0 filas</span>
+                </div>
+                <div class="summary-actions">
+                  <button type="button" class="btn btn-outline btn-xs btn-add-more" data-base="3" title="Agregar más archivos / localidades">
+                    <i data-lucide="plus"></i> Agregar
+                  </button>
+                  <button type="button" class="btn btn-outline btn-xs btn-clear-base text-rose" data-base="3" title="Quitar todos los archivos de Base 3">
+                    <i data-lucide="trash-2"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="files-list" id="files-list-base3"></div>
+              <div class="summary-drop-hint" data-base="3" title="Haz clic o arrastra más archivos para esta base">
+                <i data-lucide="plus-circle"></i> Arrastrar o hacer clic para agregar más
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Section 2: Column Mapping Accordion (Appears when files are loaded) -->
+        <div id="mapping-container" class="card mapping-card hidden">
+          <div class="card-header">
+            <div class="card-header-icon bg-purple-subtle">
+              <i data-lucide="columns-3" class="text-purple"></i>
+            </div>
+            <div class="card-header-text">
+              <h2 class="card-title">Verificación de Mapeo de Columnas</h2>
+              <p class="card-description">
+                El sistema detectó automáticamente los campos clave. Puedes ajustar la correspondencia si las columnas en los archivos de la EPS tienen nombres distintos.
+              </p>
+            </div>
+            <button id="btn-toggle-mapping" class="btn btn-outline btn-sm">
+              <span id="mapping-toggle-text">Ocultar Mapeo</span>
+              <i data-lucide="chevron-up" id="mapping-toggle-icon"></i>
+            </button>
+          </div>
+
+          <div id="mapping-body" class="mapping-body">
+            <div class="mapping-columns-grid">
+              
+              <!-- Mapping Base 1 -->
+              <div class="mapping-column-box">
+                <div class="mapping-col-header base1-col">
+                  <i data-lucide="database"></i>
+                  <span>Base 1: Conexiones Totales</span>
+                </div>
+                <div class="mapping-col-fields">
+                  <div class="form-group-sm">
+                    <label>N° de Suministro <span class="required">*</span></label>
+                    <select id="map-b1-suministro" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Localidad / Sector</label>
+                    <select id="map-b1-localidad" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Tipo de Servicio</label>
+                    <select id="map-b1-servicio" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Fecha <span class="badge-sub">(Define Antiguos vs Nuevos)</span></label>
+                    <select id="map-b1-fecha" class="form-select form-select-sm"></select>
+                    <span class="form-hint">Columna de fecha de instalación que permite distinguir entre usuarios antiguos y nuevos.</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Mapping Base 2 -->
+              <div class="mapping-column-box">
+                <div class="mapping-col-header base2-col">
+                  <i data-lucide="clipboard-check"></i>
+                  <span>Base 2: Fichas Catastrales</span>
+                </div>
+                <div class="mapping-col-fields">
+                  <div class="form-group-sm">
+                    <label>N° de Suministro <span class="required">*</span></label>
+                    <select id="map-b2-suministro" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Localidad</label>
+                    <select id="map-b2-localidad" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Tipo de Servicio</label>
+                    <select id="map-b2-servicio" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Fecha <span class="required">*</span></label>
+                    <select id="map-b2-fecha" class="form-select form-select-sm"></select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Mapping Base 3 -->
+              <div class="mapping-column-box">
+                <div class="mapping-col-header base3-col">
+                  <i data-lucide="map-pin"></i>
+                  <span>Base 3: Tabla Atributiva GIS</span>
+                </div>
+                <div class="mapping-col-fields">
+                  <div class="form-group-sm">
+                    <label>N° de Suministro <span class="required">*</span></label>
+                    <select id="map-b3-suministro" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Localidad</label>
+                    <select id="map-b3-localidad" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Tipo de Servicio</label>
+                    <select id="map-b3-servicio" class="form-select form-select-sm"></select>
+                  </div>
+                  <div class="form-group-sm">
+                    <label>Fecha <span class="required">*</span></label>
+                    <select id="map-b3-fecha" class="form-select form-select-sm"></select>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Processing Bar -->
+        <div class="process-action-container">
+          <button id="btn-process-cross" class="btn btn-primary btn-xl" disabled>
+            <i data-lucide="git-merge"></i>
+            <span>Ejecutar Cruce de Información y Evaluar Meta</span>
+          </button>
+          <div id="process-status-note" class="process-note">
+            Carga los 3 archivos o utiliza el botón "Cargar Datos de Ejemplo" para habilitar la evaluación.
+          </div>
+        </div>
+
+      </section>
+
+      <!-- SECTION 2: RESULTS DASHBOARD (Initially hidden, revealed upon processing) -->
+      <section id="section-results" class="workspace-section hidden">
+        
+        <!-- Results Header Banner -->
+        <div class="results-header-banner">
+          <div class="results-banner-left">
+            <div class="status-indicator-badge" id="goal-status-badge">
+              <i data-lucide="award"></i>
+              <span id="goal-status-text">Evaluación Completada</span>
+            </div>
+            <h2 class="results-title">Resultado de Evaluación: Meta "Catastro Comercial"</h2>
+            <div class="results-meta-tags">
+              <span class="meta-tag"><i data-lucide="calendar"></i> Año Evaluado: <strong id="res-year-label">2025</strong></span>
+              <span class="meta-tag"><i data-lucide="building-2"></i> EPS: <strong id="res-eps-label">EPS SEDAPAL S.A.</strong></span>
+              <span class="meta-tag"><i data-lucide="check-check"></i> Total Evaluados: <strong id="res-total-evaluated">0</strong></span>
+            </div>
+          </div>
+          <div class="results-banner-actions">
+            <button id="btn-export-consolidated" class="btn btn-emerald btn-lg" title="Descargar libro Excel completo">
+              <i data-lucide="download"></i>
+              <span>Descargar Base Consolidada (.xlsx)</span>
+            </button>
+            <button id="btn-export-observations" class="btn btn-amber" title="Descargar solo conexiones observadas">
+              <i data-lucide="alert-triangle"></i>
+              <span>Descargar Observaciones (.xlsx)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- REGULATORY SEGMENTATION: USUARIOS ANTIGUOS VS USUARIOS NUEVOS -->
+        <div class="user-segmentation-card" id="user-segmentation-section">
+          <div class="user-seg-top">
+            <div class="user-seg-title-box">
+              <div class="user-seg-icon">
+                <i data-lucide="users"></i>
+              </div>
+              <div>
+                <h3 class="user-seg-title">Distinción Regulatoria: Usuarios Antiguos vs. Usuarios Nuevos</h3>
+                <p class="user-seg-desc">
+                  Clasificación basada en la fecha de instalación de conexión registrada en <strong>Conexiones Totales (Base 1)</strong> respecto al año evaluado (<strong class="lbl-eval-year">2025</strong>).
+                </p>
+              </div>
+            </div>
+            
+            <!-- Segment Filter Pills -->
+            <div class="user-segment-pills" id="user-segment-pills">
+              <button type="button" class="btn-user-segment active" data-type="ALL">
+                <span>Todos los Usuarios</span>
+                <span class="segment-badge" id="seg-count-all">0</span>
+              </button>
+              <button type="button" class="btn-user-segment" data-type="ANTIGUO">
+                <i data-lucide="history"></i>
+                <span>Usuarios Antiguos (&lt; <span class="lbl-eval-year">2025</span>)</span>
+                <span class="segment-badge" id="seg-count-antiguos">0</span>
+              </button>
+              <button type="button" class="btn-user-segment" data-type="NUEVO">
+                <i data-lucide="sparkles"></i>
+                <span>Usuarios Nuevos (Año <span class="lbl-eval-year">2025</span>)</span>
+                <span class="segment-badge" id="seg-count-nuevos">0</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="user-seg-kpi-grid">
+            <!-- Card Antiguos -->
+            <div class="user-kpi-card card-antiguo">
+              <div class="uk-badge">
+                <i data-lucide="history"></i>
+                <span>USUARIOS ANTIGUOS</span>
+              </div>
+              <div class="uk-definition">
+                Instalación <strong>anterior al año <span class="lbl-eval-year">2025</span></strong>
+              </div>
+              <div class="uk-stats-row">
+                <div class="uk-stat">
+                  <div class="uk-stat-val" id="ut-antiguos-total">0</div>
+                  <div class="uk-stat-lbl">Conexiones Padrón</div>
+                </div>
+                <div class="uk-stat">
+                  <div class="uk-stat-val text-emerald" id="ut-antiguos-valid">0</div>
+                  <div class="uk-stat-lbl">Cumplen Meta</div>
+                </div>
+                <div class="uk-stat">
+                  <div class="uk-stat-val text-amber" id="ut-antiguos-obs">0</div>
+                  <div class="uk-stat-lbl">Observadas</div>
+                </div>
+                <div class="uk-stat">
+                  <div class="uk-stat-val text-blue" id="ut-antiguos-pct">0%</div>
+                  <div class="uk-stat-lbl">% Cumplimiento</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Nuevos -->
+            <div class="user-kpi-card card-nuevo">
+              <div class="uk-badge">
+                <i data-lucide="sparkles"></i>
+                <span>USUARIOS NUEVOS</span>
+              </div>
+              <div class="uk-definition">
+                Instalación <strong>durante el año <span class="lbl-eval-year">2025</span></strong>
+              </div>
+              <div class="uk-stats-row">
+                <div class="uk-stat">
+                  <div class="uk-stat-val" id="ut-nuevos-total">0</div>
+                  <div class="uk-stat-lbl">Conexiones Padrón</div>
+                </div>
+                <div class="uk-stat">
+                  <div class="uk-stat-val text-emerald" id="ut-nuevos-valid">0</div>
+                  <div class="uk-stat-lbl">Cumplen Meta</div>
+                </div>
+                <div class="uk-stat">
+                  <div class="uk-stat-val text-amber" id="ut-nuevos-obs">0</div>
+                  <div class="uk-stat-lbl">Observadas</div>
+                </div>
+                <div class="uk-stat">
+                  <div class="uk-stat-val text-emerald" id="ut-nuevos-pct">0%</div>
+                  <div class="uk-stat-lbl">% Cumplimiento</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RESULTADO 1: USUARIOS ANTIGUOS Y USUARIOS NUEVOS (BASE 1) -->
+        <div class="result-block-card" id="block-resultado-1">
+          <div class="result-block-header">
+            <span class="result-badge badge-res-1">Resultado 1</span>
+            <div class="result-header-text">
+              <h3 class="result-block-title">Usuarios Antiguos y Usuarios Nuevos</h3>
+              <p class="result-block-desc">Se obtuvo de la base 1: Conexiones totales</p>
+            </div>
+          </div>
+
+          <!-- Matriz 1.1: Conexiones de Usuarios Antiguos -->
+          <div class="matrix-group-banner banner-antiguos">
+            <div>
+              <h4 class="matrix-group-title">
+                <i data-lucide="history"></i>
+                <span>Matriz 1.1: Conexiones de Usuarios Antiguos</span>
+              </h4>
+              <p class="matrix-group-subtitle">Conexiones con fecha de instalación anterior al año regulatorio evaluado (&lt; <span class="lbl-eval-year">2025</span>)</p>
+            </div>
+            <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table matrix-image-style" id="s1-matrix-table-antiguos">
+              <thead>
+                <tr>
+                  <th rowspan="2" class="th-locality-img">LOCALIDAD</th>
+                  <th colspan="3" class="text-center block-img-header block-reported-hdr">TIPO DE SERVICIO REPORTADO</th>
+                  <th colspan="3" class="text-center block-img-header">CONEXIONES TOTALES A CATASTRAR</th>
+                  <th colspan="3" class="text-center block-header block-observed">CONEXIONES OBSERVADAS</th>
+                  <th colspan="3" class="text-center block-header block-validated">CONEXIONES VALIDADAS</th>
+                </tr>
+                <tr class="tr-sub-img">
+                  <!-- Reportado -->
+                  <th class="text-center col-img-sub">AP</th>
+                  <th class="text-center col-img-sub">AL</th>
+                  <th class="text-center col-img-sub col-divider-right">AP y AL</th>
+                  <!-- Totales a Catastrar -->
+                  <th class="text-center col-img-sub">AP</th>
+                  <th class="text-center col-img-sub">AL</th>
+                  <th class="text-center col-img-sub col-img-total col-divider-right">TOTAL</th>
+                  <!-- Observadas -->
+                  <th class="text-center col-img-sub text-amber">AP</th>
+                  <th class="text-center col-img-sub text-amber">AL</th>
+                  <th class="text-center col-img-sub col-img-total text-amber col-divider-right">TOTAL</th>
+                  <!-- Validadas -->
+                  <th class="text-center col-img-sub text-emerald">AP</th>
+                  <th class="text-center col-img-sub text-emerald">AL</th>
+                  <th class="text-center col-img-sub col-img-total text-emerald">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody id="s1-matrix-body-antiguos"></tbody>
+              <tfoot id="s1-matrix-footer-antiguos"></tfoot>
+            </table>
+          </div>
+
+          <!-- Matriz 1.2: Conexiones de Usuarios Nuevos -->
+          <div class="matrix-group-banner banner-nuevos">
+            <div>
+              <h4 class="matrix-group-title">
+                <i data-lucide="sparkles"></i>
+                <span>Matriz 1.2: Conexiones de Usuarios Nuevos</span>
+              </h4>
+              <p class="matrix-group-subtitle">Conexiones con fecha de instalación durante el año regulatorio evaluado (<span class="lbl-eval-year">2025</span>)</p>
+            </div>
+            <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table matrix-image-style" id="s1-matrix-table-nuevos">
+              <thead>
+                <tr>
+                  <th rowspan="2" class="th-locality-img">LOCALIDAD</th>
+                  <th colspan="3" class="text-center block-img-header block-reported-hdr">TIPO DE SERVICIO REPORTADO</th>
+                  <th colspan="3" class="text-center block-img-header">CONEXIONES TOTALES A CATASTRAR</th>
+                  <th colspan="3" class="text-center block-header block-observed">CONEXIONES OBSERVADAS</th>
+                  <th colspan="3" class="text-center block-header block-validated">CONEXIONES VALIDADAS</th>
+                </tr>
+                <tr class="tr-sub-img">
+                  <!-- Reportado -->
+                  <th class="text-center col-img-sub">AP</th>
+                  <th class="text-center col-img-sub">AL</th>
+                  <th class="text-center col-img-sub col-divider-right">AP y AL</th>
+                  <!-- Totales a Catastrar -->
+                  <th class="text-center col-img-sub">AP</th>
+                  <th class="text-center col-img-sub">AL</th>
+                  <th class="text-center col-img-sub col-img-total col-divider-right">TOTAL</th>
+                  <!-- Observadas -->
+                  <th class="text-center col-img-sub text-amber">AP</th>
+                  <th class="text-center col-img-sub text-amber">AL</th>
+                  <th class="text-center col-img-sub col-img-total text-amber col-divider-right">TOTAL</th>
+                  <!-- Validadas -->
+                  <th class="text-center col-img-sub text-emerald">AP</th>
+                  <th class="text-center col-img-sub text-emerald">AL</th>
+                  <th class="text-center col-img-sub col-img-total text-emerald">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody id="s1-matrix-body-nuevos"></tbody>
+              <tfoot id="s1-matrix-footer-nuevos"></tfoot>
+            </table>
+          </div>
+
+          <!-- Matriz Consolidada Total (Plegable para referencia global) -->
+          <details class="details-collapsible" style="margin-top: 1.75rem;">
+            <summary class="details-summary" style="background: rgba(100, 116, 139, 0.05); border: 1px solid var(--border-subtle);">
+              <span><i data-lucide="layers" style="width:16px; height:16px; margin-right:6px; vertical-align:middle;"></i> Ver Matriz Consolidada Total (Padrón Completo: Antiguos + Nuevos)</span>
+              <span class="details-hint">Hacer clic para expandir / ocultar padrón total</span>
+            </summary>
+            <div class="details-content" style="padding-top: 1rem;">
+              <div class="table-responsive">
+                <table class="data-table matrix-image-style" id="s1-matrix-table">
+                  <thead>
+                    <tr>
+                      <th rowspan="2" class="th-locality-img">LOCALIDAD</th>
+                      <th colspan="3" class="text-center block-img-header block-reported-hdr">TIPO DE SERVICIO REPORTADO</th>
+                      <th colspan="3" class="text-center block-img-header">CONEXIONES TOTALES A CATASTRAR</th>
+                      <th colspan="3" class="text-center block-header block-observed">CONEXIONES OBSERVADAS</th>
+                      <th colspan="3" class="text-center block-header block-validated">CONEXIONES VALIDADAS</th>
+                    </tr>
+                    <tr class="tr-sub-img">
+                      <th class="text-center col-img-sub">AP</th>
+                      <th class="text-center col-img-sub">AL</th>
+                      <th class="text-center col-img-sub col-divider-right">AP y AL</th>
+                      <th class="text-center col-img-sub">AP</th>
+                      <th class="text-center col-img-sub">AL</th>
+                      <th class="text-center col-img-sub col-img-total col-divider-right">TOTAL</th>
+                      <th class="text-center col-img-sub text-amber">AP</th>
+                      <th class="text-center col-img-sub text-amber">AL</th>
+                      <th class="text-center col-img-sub col-img-total text-amber col-divider-right">TOTAL</th>
+                      <th class="text-center col-img-sub text-emerald">AP</th>
+                      <th class="text-center col-img-sub text-emerald">AL</th>
+                      <th class="text-center col-img-sub col-img-total text-emerald">TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody id="s1-matrix-body"></tbody>
+                  <tfoot id="s1-matrix-footer"></tfoot>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <!-- Detalle de Conexiones Base 1 (Plegable) -->
+          <details class="details-collapsible">
+            <summary class="details-summary">
+              <span><i data-lucide="list" style="width:16px; height:16px; margin-right:6px; vertical-align:middle;"></i> Ver Detalle de Conexiones en Padrón Base (Base 1)</span>
+              <span class="details-hint">Hacer clic para expandir / ocultar</span>
+            </summary>
+            <div class="details-content">
+              <div class="table-controls-bar">
+                <div class="search-box">
+                  <i data-lucide="search"></i>
+                  <input type="text" id="s1-search-input" placeholder="Buscar por suministro, usuario, dirección...">
+                </div>
+                <div class="filters-row">
+                  <select id="s1-filter-locality" class="form-select form-select-sm">
+                    <option value="ALL">Todas las localidades</option>
+                  </select>
+                  <select id="s1-filter-user-type" class="form-select form-select-sm">
+                    <option value="ALL">Todos los grupos (Antiguos y Nuevos)</option>
+                    <option value="ANTIGUO">Solo Usuarios Antiguos</option>
+                    <option value="NUEVO">Solo Usuarios Nuevos</option>
+                  </select>
+                  <select id="s1-filter-status" class="form-select form-select-sm">
+                    <option value="ALL">Todos los registros</option>
+                    <option value="CUMPLE">Solo Cumplen (Completas)</option>
+                    <option value="OBS">Solo No Cumplen (Observadas)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>N° Suministro</th>
+                      <th>Usuario / Titular</th>
+                      <th>Dirección</th>
+                      <th>Localidad</th>
+                      <th>Tipo Usuario</th>
+                      <th>Servicio Remitido</th>
+                      <th>Servicio Catastro</th>
+                      <th>Fecha Padrón</th>
+                      <th class="text-center">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="s1-table-body"></tbody>
+                </table>
+              </div>
+              <div class="pagination-bar" id="s1-pagination">
+                <span id="s1-page-info">Mostrando registros</span>
+                <div class="pagination-actions">
+                  <button type="button" class="btn btn-outline btn-sm" id="s1-page-prev"><i data-lucide="chevron-left"></i> Anterior</button>
+                  <span id="s1-page-num" class="page-current">1</span>
+                  <button type="button" class="btn btn-outline btn-sm" id="s1-page-next">Siguiente <i data-lucide="chevron-right"></i></button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- RESULTADO 2: MATRIZ DE FICHAS CATASTRALES EN CAMPO (BASE 2) -->
+        <div class="result-block-card" id="block-resultado-2">
+          <div class="result-block-header">
+            <span class="result-badge badge-res-2">Resultado 2</span>
+            <div class="result-header-text">
+              <h3 class="result-block-title">Matrices de Fichas Catastrales en Campo (Base 2)</h3>
+              <p class="result-block-desc">Fichas censadas en campo por localidad y servicio, diferenciando usuarios antiguos y nuevos según la fecha de instalación en Base 1.</p>
+            </div>
+          </div>
+
+          <!-- Matriz 2.1: Fichas de Usuarios Antiguos -->
+          <div class="matrix-group-banner banner-antiguos">
+            <div>
+              <h4 class="matrix-group-title">
+                <i data-lucide="history"></i>
+                <span>Matriz 2.1: Fichas Catastrales de Usuarios Antiguos</span>
+              </h4>
+              <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 anterior al año regulatorio evaluado (&lt; <span class="lbl-eval-year">2025</span>)</p>
+            </div>
+            <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table matrix-stage2-table" id="s2-matrix-table-antiguos">
+              <thead>
+                <tr class="tr-main-headers">
+                  <th rowspan="2" class="th-locality">LOCALIDAD</th>
+                  <th colspan="3" class="text-center block-header block-remitidas">TOTAL FICHAS CATASTRALES REMITIDAS</th>
+                  <th colspan="3" class="text-center block-header block-totals">TOTAL FICHAS CATASTRALES PARA ANALIZAR</th>
+                  <th colspan="3" class="text-center block-header block-observed">FICHAS OBSERVADAS</th>
+                  <th colspan="3" class="text-center block-header block-validated">FICHAS VALIDADAS</th>
+                </tr>
+                <tr class="tr-sub-headers">
+                  <!-- Remitidas -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Para Analizar -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Observadas -->
+                  <th class="text-center col-sub text-amber">AP</th>
+                  <th class="text-center col-sub text-amber">AL</th>
+                  <th class="text-center col-sub col-total text-amber col-divider-right">TOTAL</th>
+                  <!-- Validadas -->
+                  <th class="text-center col-sub text-emerald">AP</th>
+                  <th class="text-center col-sub text-emerald">AL</th>
+                  <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody id="s2-matrix-body-antiguos"></tbody>
+              <tfoot id="s2-matrix-footer-antiguos"></tfoot>
+            </table>
+          </div>
+
+          <!-- Matriz 2.2: Fichas de Usuarios Nuevos -->
+          <div class="matrix-group-banner banner-nuevos">
+            <div>
+              <h4 class="matrix-group-title">
+                <i data-lucide="sparkles"></i>
+                <span>Matriz 2.2: Fichas Catastrales de Usuarios Nuevos</span>
+              </h4>
+              <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 durante el año regulatorio evaluado (<span class="lbl-eval-year">2025</span>)</p>
+            </div>
+            <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table matrix-stage2-table" id="s2-matrix-table-nuevos">
+              <thead>
+                <tr class="tr-main-headers">
+                  <th rowspan="2" class="th-locality">LOCALIDAD</th>
+                  <th colspan="3" class="text-center block-header block-remitidas">TOTAL FICHAS CATASTRALES REMITIDAS</th>
+                  <th colspan="3" class="text-center block-header block-totals">TOTAL FICHAS CATASTRALES PARA ANALIZAR</th>
+                  <th colspan="3" class="text-center block-header block-observed">FICHAS OBSERVADAS</th>
+                  <th colspan="3" class="text-center block-header block-validated">FICHAS VALIDADAS</th>
+                </tr>
+                <tr class="tr-sub-headers">
+                  <!-- Remitidas -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Para Analizar -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Observadas -->
+                  <th class="text-center col-sub text-amber">AP</th>
+                  <th class="text-center col-sub text-amber">AL</th>
+                  <th class="text-center col-sub col-total text-amber col-divider-right">TOTAL</th>
+                  <!-- Validadas -->
+                  <th class="text-center col-sub text-emerald">AP</th>
+                  <th class="text-center col-sub text-emerald">AL</th>
+                  <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody id="s2-matrix-body-nuevos"></tbody>
+              <tfoot id="s2-matrix-footer-nuevos"></tfoot>
+            </table>
+          </div>
+
+          <!-- Matriz Consolidada Total (Plegable para referencia global) -->
+          <details class="details-collapsible" style="margin-top: 1.75rem;">
+            <summary class="details-summary" style="background: rgba(100, 116, 139, 0.05); border: 1px solid var(--border-subtle);">
+              <span><i data-lucide="layers" style="width:16px; height:16px; margin-right:6px; vertical-align:middle;"></i> Ver Matriz Consolidada Total de Fichas (Antiguos + Nuevos)</span>
+              <span class="details-hint">Hacer clic para expandir / ocultar padrón total</span>
+            </summary>
+            <div class="details-content" style="padding-top: 1rem;">
+              <div class="table-responsive">
+                <table class="data-table matrix-stage2-table" id="s2-matrix-table">
+                  <thead>
+                    <tr class="tr-main-headers">
+                      <th rowspan="2" class="th-locality">LOCALIDAD</th>
+                      <th colspan="3" class="text-center block-header block-remitidas">TOTAL FICHAS CATASTRALES REMITIDAS</th>
+                      <th colspan="3" class="text-center block-header block-totals">TOTAL FICHAS CATASTRALES PARA ANALIZAR</th>
+                      <th colspan="3" class="text-center block-header block-observed">FICHAS OBSERVADAS</th>
+                      <th colspan="3" class="text-center block-header block-validated">FICHAS VALIDADAS</th>
+                    </tr>
+                    <tr class="tr-sub-headers">
+                      <!-- Remitidas -->
+                      <th class="text-center col-sub">AP</th>
+                      <th class="text-center col-sub">AL</th>
+                      <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                      <!-- Para Analizar -->
+                      <th class="text-center col-sub">AP</th>
+                      <th class="text-center col-sub">AL</th>
+                      <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                      <!-- Observadas -->
+                      <th class="text-center col-sub text-amber">AP</th>
+                      <th class="text-center col-sub text-amber">AL</th>
+                      <th class="text-center col-sub col-total text-amber col-divider-right">TOTAL</th>
+                      <!-- Validadas -->
+                      <th class="text-center col-sub text-emerald">AP</th>
+                      <th class="text-center col-sub text-emerald">AL</th>
+                      <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody id="s2-matrix-body"></tbody>
+                  <tfoot id="s2-matrix-footer"></tfoot>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <!-- Detalle de Fichas Base 2 (Plegable) -->
+          <details class="details-collapsible">
+            <summary class="details-summary">
+              <span><i data-lucide="clipboard-check" style="width:16px; height:16px; margin-right:6px; vertical-align:middle;"></i> Ver Detalle de Fichas Catastrales en Campo (Base 2)</span>
+              <span class="details-hint">Hacer clic para expandir / ocultar</span>
+            </summary>
+            <div class="details-content">
+              <div class="table-controls-bar">
+                <div class="search-box">
+                  <i data-lucide="search"></i>
+                  <input type="text" id="s2-search-input" placeholder="Buscar por suministro o localidad...">
+                </div>
+                <div class="filters-row">
+                  <select id="s2-filter-locality" class="form-select form-select-sm">
+                    <option value="ALL">Todas las localidades</option>
+                  </select>
+                  <select id="s2-filter-user-type" class="form-select form-select-sm">
+                    <option value="ALL">Todos los grupos (Antiguos y Nuevos)</option>
+                    <option value="ANTIGUO">Solo Usuarios Antiguos</option>
+                    <option value="NUEVO">Solo Usuarios Nuevos</option>
+                  </select>
+                  <select id="s2-filter-status" class="form-select form-select-sm">
+                    <option value="ALL">Todas las fichas remitidas</option>
+                    <option value="ANALIZAR">Solo Fichas para Analizar (Validadas en R1)</option>
+                    <option value="VALID">Solo Validadas (En año y en R1)</option>
+                    <option value="OBS_ALL">Todas las Observadas (Fuera de año)</option>
+                    <option value="OBS_ANO">Observadas: Fuera de Año Regulatorio</option>
+                    <option value="EXCLUIDAS">Excluidas: No validadas / No figuran en R1</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>N° Suministro</th>
+                      <th>Localidad</th>
+                      <th>Tipo Usuario (Base 1)</th>
+                      <th>Fecha de Ficha</th>
+                      <th class="text-center">¿Para Analizar (R1)?</th>
+                      <th class="text-center">¿En Año Regul.?</th>
+                      <th>Tipo de Servicio</th>
+                      <th>Modalidad</th>
+                      <th class="text-center">Estado de Ficha</th>
+                    </tr>
+                  </thead>
+                  <tbody id="s2-table-body"></tbody>
+                </table>
+              </div>
+              <div class="pagination-bar" id="s2-pagination">
+                <span id="s2-page-info">Mostrando fichas</span>
+                <div class="pagination-actions">
+                  <button type="button" class="btn btn-outline btn-sm" id="s2-page-prev"><i data-lucide="chevron-left"></i> Anterior</button>
+                  <span id="s2-page-num" class="page-current">1</span>
+                  <button type="button" class="btn btn-outline btn-sm" id="s2-page-next">Siguiente <i data-lucide="chevron-right"></i></button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- RESULTADO 3: MATRIZ DE PLATAFORMA QGIS (BASE 3) -->
+        <div class="result-block-card" id="block-resultado-3">
+          <div class="result-block-header">
+            <span class="result-badge badge-res-3">Resultado 3</span>
+            <div class="result-header-text">
+              <h3 class="result-block-title">Matrices de Plataforma QGIS (Base 3)</h3>
+              <p class="result-block-desc">Puntos georreferenciados en GIS por localidad y servicio, diferenciando usuarios antiguos y nuevos según la fecha de instalación en Base 1.</p>
+            </div>
+          </div>
+
+          <!-- Matriz 3.1: QGIS de Usuarios Antiguos -->
+          <div class="matrix-group-banner banner-antiguos">
+            <div>
+              <h4 class="matrix-group-title">
+                <i data-lucide="history"></i>
+                <span>Matriz 3.1: Registros QGIS de Usuarios Antiguos</span>
+              </h4>
+              <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 anterior al año regulatorio evaluado (&lt; <span class="lbl-eval-year">2025</span>)</p>
+            </div>
+            <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table matrix-stage3-table" id="s3-matrix-table-antiguos">
+              <thead>
+                <tr class="tr-main-headers">
+                  <th rowspan="2" class="th-locality">LOCALIDAD</th>
+                  <th colspan="3" class="text-center block-header block-remitidas">TOTAL REGISTROS GIS REMITIDOS</th>
+                  <th colspan="3" class="text-center block-header block-totals">TOTAL REGISTROS GIS PARA ANALIZAR</th>
+                  <th colspan="3" class="text-center block-header block-observed">REGISTROS GIS OBSERVADOS</th>
+                  <th colspan="3" class="text-center block-header block-validated">REGISTROS GIS VALIDADOS</th>
+                </tr>
+                <tr class="tr-sub-headers">
+                  <!-- Remitidos -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Para Analizar -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Observados -->
+                  <th class="text-center col-sub text-amber">AP</th>
+                  <th class="text-center col-sub text-amber">AL</th>
+                  <th class="text-center col-sub col-total text-amber col-divider-right">TOTAL</th>
+                  <!-- Validados -->
+                  <th class="text-center col-sub text-emerald">AP</th>
+                  <th class="text-center col-sub text-emerald">AL</th>
+                  <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody id="s3-matrix-body-antiguos"></tbody>
+              <tfoot id="s3-matrix-footer-antiguos"></tfoot>
+            </table>
+          </div>
+
+          <!-- Matriz 3.2: QGIS de Usuarios Nuevos -->
+          <div class="matrix-group-banner banner-nuevos">
+            <div>
+              <h4 class="matrix-group-title">
+                <i data-lucide="sparkles"></i>
+                <span>Matriz 3.2: Registros QGIS de Usuarios Nuevos</span>
+              </h4>
+              <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 durante el año regulatorio evaluado (<span class="lbl-eval-year">2025</span>)</p>
+            </div>
+            <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table matrix-stage3-table" id="s3-matrix-table-nuevos">
+              <thead>
+                <tr class="tr-main-headers">
+                  <th rowspan="2" class="th-locality">LOCALIDAD</th>
+                  <th colspan="3" class="text-center block-header block-remitidas">TOTAL REGISTROS GIS REMITIDOS</th>
+                  <th colspan="3" class="text-center block-header block-totals">TOTAL REGISTROS GIS PARA ANALIZAR</th>
+                  <th colspan="3" class="text-center block-header block-observed">REGISTROS GIS OBSERVADOS</th>
+                  <th colspan="3" class="text-center block-header block-validated">REGISTROS GIS VALIDADOS</th>
+                </tr>
+                <tr class="tr-sub-headers">
+                  <!-- Remitidos -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Para Analizar -->
+                  <th class="text-center col-sub">AP</th>
+                  <th class="text-center col-sub">AL</th>
+                  <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                  <!-- Observados -->
+                  <th class="text-center col-sub text-amber">AP</th>
+                  <th class="text-center col-sub text-amber">AL</th>
+                  <th class="text-center col-sub col-total text-amber col-divider-right">TOTAL</th>
+                  <!-- Validados -->
+                  <th class="text-center col-sub text-emerald">AP</th>
+                  <th class="text-center col-sub text-emerald">AL</th>
+                  <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody id="s3-matrix-body-nuevos"></tbody>
+              <tfoot id="s3-matrix-footer-nuevos"></tfoot>
+            </table>
+          </div>
+
+          <!-- Matriz Consolidada Total (Plegable para referencia global) -->
+          <details class="details-collapsible" style="margin-top: 1.75rem;">
+            <summary class="details-summary" style="background: rgba(100, 116, 139, 0.05); border: 1px solid var(--border-subtle);">
+              <span><i data-lucide="layers" style="width:16px; height:16px; margin-right:6px; vertical-align:middle;"></i> Ver Matriz Consolidada Total QGIS (Antiguos + Nuevos)</span>
+              <span class="details-hint">Hacer clic para expandir / ocultar padrón total</span>
+            </summary>
+            <div class="details-content" style="padding-top: 1rem;">
+              <div class="table-responsive">
+                <table class="data-table matrix-stage3-table" id="s3-matrix-table">
+                  <thead>
+                    <tr class="tr-main-headers">
+                      <th rowspan="2" class="th-locality">LOCALIDAD</th>
+                      <th colspan="3" class="text-center block-header block-remitidas">TOTAL REGISTROS GIS REMITIDOS</th>
+                      <th colspan="3" class="text-center block-header block-totals">TOTAL REGISTROS GIS PARA ANALIZAR</th>
+                      <th colspan="3" class="text-center block-header block-observed">REGISTROS GIS OBSERVADOS</th>
+                      <th colspan="3" class="text-center block-header block-validated">REGISTROS GIS VALIDADOS</th>
+                    </tr>
+                    <tr class="tr-sub-headers">
+                      <!-- Remitidos -->
+                      <th class="text-center col-sub">AP</th>
+                      <th class="text-center col-sub">AL</th>
+                      <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                      <!-- Para Analizar -->
+                      <th class="text-center col-sub">AP</th>
+                      <th class="text-center col-sub">AL</th>
+                      <th class="text-center col-sub col-total col-divider-right">TOTAL</th>
+                      <!-- Observados -->
+                      <th class="text-center col-sub text-amber">AP</th>
+                      <th class="text-center col-sub text-amber">AL</th>
+                      <th class="text-center col-sub col-total text-amber col-divider-right">TOTAL</th>
+                      <!-- Validados -->
+                      <th class="text-center col-sub text-emerald">AP</th>
+                      <th class="text-center col-sub text-emerald">AL</th>
+                      <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody id="s3-matrix-body"></tbody>
+                  <tfoot id="s3-matrix-footer"></tfoot>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <!-- Detalle de QGIS Base 3 (Plegable) -->
+          <details class="details-collapsible">
+            <summary class="details-summary">
+              <span><i data-lucide="map-pin" style="width:16px; height:16px; margin-right:6px; vertical-align:middle;"></i> Ver Detalle de Registros en Plataforma QGIS (Base 3)</span>
+              <span class="details-hint">Hacer clic para expandir / ocultar</span>
+            </summary>
+            <div class="details-content">
+              <div class="table-controls-bar">
+                <div class="search-box">
+                  <i data-lucide="search"></i>
+                  <input type="text" id="s3-search-input" placeholder="Buscar por suministro o código catastral...">
+                </div>
+                <div class="filters-row">
+                  <select id="s3-filter-locality" class="form-select form-select-sm">
+                    <option value="ALL">Todas las localidades</option>
+                  </select>
+                  <select id="s3-filter-user-type" class="form-select form-select-sm">
+                    <option value="ALL">Todos los grupos (Antiguos y Nuevos)</option>
+                    <option value="ANTIGUO">Solo Usuarios Antiguos</option>
+                    <option value="NUEVO">Solo Usuarios Nuevos</option>
+                  </select>
+                  <select id="s3-filter-status" class="form-select form-select-sm">
+                    <option value="ALL">Todos los registros GIS remitidos</option>
+                    <option value="ANALIZAR">Solo Registros para Analizar (Validados en R2)</option>
+                    <option value="VALID">Solo Validados (En año y en R2)</option>
+                    <option value="OBS_ALL">Todos los Observados (Fuera de año)</option>
+                    <option value="OBS_ANO">Observados: Fuera del Año Regulatorio</option>
+                    <option value="EXCLUIDAS">Excluidos: No validados / No figuran en R2</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>N° Suministro</th>
+                      <th>Código Catastral GIS</th>
+                      <th>Localidad</th>
+                      <th>Tipo Usuario (Base 1)</th>
+                      <th>Fecha de Registro GIS</th>
+                      <th class="text-center">¿Para Analizar (R2)?</th>
+                      <th class="text-center">¿En Año Regul.?</th>
+                      <th>Tipo de Servicio</th>
+                      <th class="text-center">Estado GIS</th>
+                    </tr>
+                  </thead>
+                  <tbody id="s3-table-body"></tbody>
+                </table>
+              </div>
+              <div class="pagination-bar" id="s3-pagination">
+                <span id="s3-page-info">Mostrando registros GIS</span>
+                <div class="pagination-actions">
+                  <button type="button" class="btn btn-outline btn-sm" id="s3-page-prev"><i data-lucide="chevron-left"></i> Anterior</button>
+                  <span id="s3-page-num" class="page-current">1</span>
+                  <button type="button" class="btn btn-outline btn-sm" id="s3-page-next">Siguiente <i data-lucide="chevron-right"></i></button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- RESULTADO 4: CRUCE FINAL CONSOLIDADO (RESUMEN GENERAL SUNASS) -->
+        <div class="result-block-card locality-card" id="block-resultado-4">
+          <div class="result-block-header">
+            <span class="result-badge badge-res-4">Resultado 4</span>
+            <div class="result-header-text">
+              <h3 class="result-block-title">Cruce Final Consolidado: Resumen General de la Meta (SUNASS)</h3>
+              <p class="result-block-desc">Un solo cuadro que agrupa todo el resumen de lo realizado: Conexiones Totales a Catastrar (Padrón Base 1), Fichas Catastrales (Totales, Observadas, Validadas) y QGIS (Totales, Observados, Validados).</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table locality-matrix-table" id="locality-summary-table">
+              <thead>
+                <!-- Fila 1: Títulos de Bloque -->
+                <tr class="tr-main-headers">
+                  <th rowspan="3" class="th-locality">LOCALIDAD</th>
+                  <th colspan="3" rowspan="2" class="text-center block-header block-b1">CONEXIONES TOTALES A CATASTRAR</th>
+                  <th colspan="9" class="text-center block-header block-b2">FICHAS CATASTRALES (BASE 2)</th>
+                  <th colspan="9" class="text-center block-header block-b3">PLATAFORMA QGIS (BASE 3)</th>
+                  <th rowspan="3" class="text-center th-stat">CUMPLEN META</th>
+                  <th rowspan="3" class="text-center th-stat" style="min-width: 140px;">% AVANCE</th>
+                  <th rowspan="3" class="text-center th-stat">ACCIÓN</th>
+                </tr>
+                <!-- Fila 2: Sub-bloques (Totales, Observados, Validados) -->
+                <tr class="tr-mid-headers">
+                  <th colspan="3" class="text-center subblock-hdr subblock-totals">TOTALES</th>
+                  <th colspan="3" class="text-center subblock-hdr subblock-obs">OBSERVADAS</th>
+                  <th colspan="3" class="text-center subblock-hdr subblock-val">VALIDADAS</th>
+
+                  <th colspan="3" class="text-center subblock-hdr subblock-totals">TOTALES</th>
+                  <th colspan="3" class="text-center subblock-hdr subblock-obs">OBSERVADOS</th>
+                  <th colspan="3" class="text-center subblock-hdr subblock-val">VALIDADOS</th>
+                </tr>
+                <!-- Fila 3: Servicios (AP, AL, Total) -->
+                <tr class="tr-sub-headers">
+                  <!-- Base 1 -->
+                  <th class="text-center col-sub col-ap">AP</th>
+                  <th class="text-center col-sub col-al">AL</th>
+                  <th class="text-center col-sub col-total">TOTAL</th>
+
+                  <!-- Fichas Totales -->
+                  <th class="text-center col-sub col-ap">AP</th>
+                  <th class="text-center col-sub col-al">AL</th>
+                  <th class="text-center col-sub col-total">TOTAL</th>
+                  <!-- Fichas Observadas -->
+                  <th class="text-center col-sub col-ap text-amber">AP</th>
+                  <th class="text-center col-sub col-al text-amber">AL</th>
+                  <th class="text-center col-sub col-total text-amber">TOTAL</th>
+                  <!-- Fichas Validadas -->
+                  <th class="text-center col-sub col-ap text-emerald">AP</th>
+                  <th class="text-center col-sub col-al text-emerald">AL</th>
+                  <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+
+                  <!-- QGIS Totales -->
+                  <th class="text-center col-sub col-ap">AP</th>
+                  <th class="text-center col-sub col-al">AL</th>
+                  <th class="text-center col-sub col-total">TOTAL</th>
+                  <!-- QGIS Observados -->
+                  <th class="text-center col-sub col-ap text-amber">AP</th>
+                  <th class="text-center col-sub col-al text-amber">AL</th>
+                  <th class="text-center col-sub col-total text-amber">TOTAL</th>
+                  <!-- QGIS Validados -->
+                  <th class="text-center col-sub col-ap text-emerald">AP</th>
+                  <th class="text-center col-sub col-al text-emerald">AL</th>
+                  <th class="text-center col-sub col-total text-emerald">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody id="locality-summary-body">
+                <!-- Dynamically populated -->
+              </tbody>
+              <tfoot id="locality-summary-footer">
+                <!-- Total row -->
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- Data Explorer / Pivot Table Section -->
+        <div class="card data-explorer-card">
+          <div class="card-header explorer-header">
+            <div class="explorer-header-left">
+              <div class="card-header-icon bg-blue-subtle">
+                <i data-lucide="table" class="text-blue"></i>
+              </div>
+              <div>
+                <h3 class="card-title">Explorador Dinámico de Conexiones Evaluadas</h3>
+                <p class="card-description">Filtra, busca y audita en detalle cada número de suministro.</p>
+              </div>
+            </div>
+            
+            <div class="table-counts-badge">
+              Mostrando <strong id="table-showing-count">0</strong> de <strong id="table-total-count">0</strong> registros
+            </div>
+          </div>
+
+          <!-- Filter Toolbar -->
+          <div class="explorer-toolbar">
+            
+            <!-- Search Input -->
+            <div class="search-box">
+              <i data-lucide="search" class="search-icon"></i>
+              <input type="text" id="table-search-input" class="search-input" placeholder="Buscar por N° suministro, usuario, dirección, código...">
+              <button id="btn-clear-search" class="btn-clear-search hidden"><i data-lucide="x"></i></button>
+            </div>
+
+            <!-- Status Filter Tabs / Chips -->
+            <div class="filter-chips-group">
+              <button class="filter-chip active" data-status="ALL">Todos (<span id="count-chip-all">0</span>)</button>
+              <button class="filter-chip chip-success" data-status="CUMPLE">Cumple Meta (<span id="count-chip-cumple">0</span>)</button>
+              <button class="filter-chip chip-warning" data-status="SOLO_FICHA">Solo Ficha (<span id="count-chip-soloficha">0</span>)</button>
+              <button class="filter-chip chip-warning" data-status="SOLO_GIS">Solo GIS (<span id="count-chip-sologis">0</span>)</button>
+              <button class="filter-chip chip-danger" data-status="FUERA_ANO">Fuera de Año (<span id="count-chip-fuera">0</span>)</button>
+              <button class="filter-chip chip-neutral" data-status="NO_CATASTRADO">No Catastrado (<span id="count-chip-nocat">0</span>)</button>
+            </div>
+
+            <!-- Locality Filter Dropdown -->
+            <div class="toolbar-dropdown">
+              <select id="filter-locality-select" class="form-select form-select-sm">
+                <option value="ALL">Todas las localidades</option>
+              </select>
+            </div>
+
+            <!-- User Type Filter Dropdown -->
+            <div class="toolbar-dropdown">
+              <select id="filter-user-type-select" class="form-select form-select-sm" title="Filtrar por tipo de usuario (Antiguo / Nuevo)">
+                <option value="ALL">Todos los usuarios (Antiguos y Nuevos)</option>
+                <option value="ANTIGUO">Solo Usuarios Antiguos (&lt; año)</option>
+                <option value="NUEVO">Solo Usuarios Nuevos (en año)</option>
+              </select>
+            </div>
+
+            <!-- Service Filter Dropdown -->
+            <div class="toolbar-dropdown">
+              <select id="filter-service-select" class="form-select form-select-sm" title="Filtrar por servicio de Catastro comercial">
+                <option value="ALL">Todos los servicios de catastro</option>
+                <option value="Agua potable">Agua potable</option>
+                <option value="Alcantarillado">Alcantarillado</option>
+              </select>
+            </div>
+
+            <!-- Rows per page -->
+            <div class="toolbar-dropdown">
+              <select id="table-page-size" class="form-select form-select-sm">
+                <option value="15">15 por pág.</option>
+                <option value="30" selected>30 por pág.</option>
+                <option value="50">50 por pág.</option>
+                <option value="100">100 por pág.</option>
+              </select>
+            </div>
+
+          </div>
+
+          <!-- Table Container -->
+          <div class="table-responsive">
+            <table class="data-table" id="evaluation-table">
+              <thead>
+                <tr>
+                  <th class="th-sortable" data-sort="suministro">
+                    N° Suministro <i data-lucide="arrow-up-down" class="sort-icon"></i>
+                  </th>
+                  <th class="th-sortable" data-sort="usuario">
+                    Usuario / Dirección <i data-lucide="arrow-up-down" class="sort-icon"></i>
+                  </th>
+                  <th class="th-sortable" data-sort="localidad">
+                    Localidad <i data-lucide="arrow-up-down" class="sort-icon"></i>
+                  </th>
+                  <th class="th-sortable text-center" data-sort="tipoUsuario">
+                    Tipo de Usuario <i data-lucide="arrow-up-down" class="sort-icon"></i>
+                  </th>
+                  <th class="th-sortable" data-sort="servicioReal">
+                    Tipo de servicio (Real) <i data-lucide="arrow-up-down" class="sort-icon"></i>
+                  </th>
+                  <th class="th-sortable" data-sort="servicioCatastro">
+                    Tipo de servicio (Catastro comercial) <i data-lucide="arrow-up-down" class="sort-icon"></i>
+                  </th>
+                  <th class="text-center">
+                    En Padrón
+                  </th>
+                  <th class="text-center">
+                    Ficha Catastral
+                  </th>
+                  <th class="text-center">
+                    Plataforma GIS
+                  </th>
+                  <th class="th-sortable text-center" data-sort="status">
+                    Estado Validación <i data-lucide="arrow-up-down" class="sort-icon"></i>
+                  </th>
+                  <th class="text-center">Detalle</th>
+                </tr>
+              </thead>
+              <tbody id="evaluation-table-body">
+                <!-- Dynamically injected rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Table Pagination Footer -->
+          <div class="table-pagination">
+            <div class="pagination-info">
+              Página <span id="current-page">1</span> de <span id="total-pages">1</span>
+            </div>
+            <div class="pagination-buttons">
+              <button id="btn-page-prev" class="btn btn-outline btn-sm" disabled>
+                <i data-lucide="chevron-left"></i> Anterior
+              </button>
+              <div id="pagination-numbers" class="pagination-page-numbers"></div>
+              <button id="btn-page-next" class="btn btn-outline btn-sm">
+                Siguiente <i data-lucide="chevron-right"></i>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        </div> <!-- /stage-pane-4 -->
+
+      </section>
+
+    </main>
+
+    <!-- Audit Detail Modal -->
+    <div id="detail-modal" class="modal-overlay hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <i data-lucide="shield-check" class="text-blue"></i>
+            <h3 class="modal-title">Auditoría Individual de Conexión</h3>
+          </div>
+          <button id="btn-close-modal" class="btn-icon-subtle"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body" id="modal-content">
+          <!-- Injected dynamically -->
+        </div>
+        <div class="modal-footer">
+          <button id="btn-modal-dismiss" class="btn btn-secondary">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast-notification" class="toast-notification hidden">
+      <div class="toast-icon" id="toast-icon"></div>
+      <div class="toast-message" id="toast-message">Mensaje</div>
+    </div>
+
+  </div>
+
+  <!-- Main Application Script -->
+  <script src="src/app.js"></script>
+</body>
+</html>
