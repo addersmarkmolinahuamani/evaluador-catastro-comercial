@@ -292,46 +292,151 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(`Archivo eliminado de Base ${baseId}`, 'info');
   }
 
+  // Web Worker instance for background Excel parsing (prevents UI freezing)
+  let excelWorker = null;
+  let workerMsgId = 0;
+  const workerCallbacks = new Map();
+
+  function getExcelWorker() {
+    if (excelWorker) return excelWorker;
+    try {
+      excelWorker = new Worker('assets/excel-worker.js');
+      excelWorker.onmessage = (e) => {
+        const { id, ok, rows, columns, error } = e.data;
+        const cb = workerCallbacks.get(id);
+        if (cb) {
+          workerCallbacks.delete(id);
+          if (ok) cb.resolve({ rows, columns });
+          else cb.reject(new Error(error || 'Error en worker Excel'));
+        }
+      };
+      excelWorker.onerror = (err) => {
+        console.warn('Web Worker error, fallback a hilo principal:', err);
+        excelWorker = null;
+      };
+      return excelWorker;
+    } catch (e) {
+      // Fallback cuando se abre vía file:// sin servidor web
+      return null;
+    }
+  }
+
+  function clampMainThreadRange(ws) {
+    if (!ws || !ws['!ref']) return;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    if (ws['!data'] && Array.isArray(ws['!data'])) {
+      const data = ws['!data'];
+      let maxRow = 0, maxCol = 0;
+      const rowLimit = Math.min(data.length - 1, range.e.r);
+      for (let r = 0; r <= rowLimit; r++) {
+        const row = data[r];
+        if (!row) continue;
+        let rowHasVal = false;
+        for (let c = 0; c < row.length; c++) {
+          const cell = row[c];
+          if (cell && cell.v !== undefined && cell.v !== null && String(cell.v).trim() !== '') {
+            rowHasVal = true;
+            if (c > maxCol) maxCol = c;
+          }
+        }
+        if (rowHasVal && r > maxRow) maxRow = r;
+      }
+      range.e.r = Math.min(range.e.r, maxRow);
+      range.e.c = Math.min(range.e.c, Math.max(maxCol, 0));
+      ws['!ref'] = XLSX.utils.encode_range(range);
+      if (data.length > range.e.r + 1) data.length = range.e.r + 1;
+    }
+  }
+
+  function parseExcelBufferAsync(fileName, arrayBuffer) {
+    const worker = getExcelWorker();
+    if (worker) {
+      return new Promise((resolve, reject) => {
+        const id = ++workerMsgId;
+        workerCallbacks.set(id, { resolve, reject });
+        worker.postMessage({ id, fileName, buffer: arrayBuffer }, [arrayBuffer]);
+      });
+    }
+
+    // Fallback en hilo principal con pausa de renderizado y recorte de filas fantasma
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        try {
+          const workbook = XLSX.read(new Uint8Array(arrayBuffer), {
+            type: 'array',
+            dense: true,
+            sheets: 0,
+            cellFormula: false,
+            cellHTML: false,
+            cellStyles: false,
+            cellNF: false,
+            cellText: false,
+            cellDates: false
+          });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          clampMainThreadRange(worksheet);
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true, blankrows: false });
+          if (!jsonData || jsonData.length === 0) {
+            resolve({ rows: [], columns: [] });
+            return;
+          }
+          const allCols = Object.keys(jsonData[0]);
+          const validCols = allCols.filter(col => {
+            if (!col.startsWith('__EMPTY')) return true;
+            for (let i = 0; i < Math.min(jsonData.length, 200); i++) {
+              const v = jsonData[i][col];
+              if (v !== '' && v !== null && v !== undefined) return true;
+            }
+            return false;
+          });
+          const cleanFileLocality = fileName
+            .replace(/\.[^/.]+$/, '')
+            .replace(/^\d+[\s_-]*/, '')
+            .replace(/[_-]+/g, ' ')
+            .trim()
+            .toUpperCase();
+          const hasLocCol = validCols.some(c => /localidad|distrito|sector|zona|anexo/i.test(c));
+          const columns = [...validCols];
+          if (!hasLocCol && cleanFileLocality && !columns.includes('Localidad')) {
+            columns.push('Localidad');
+          }
+          if (!hasLocCol && cleanFileLocality) {
+            jsonData.forEach(row => {
+              if (!row['Localidad']) row['Localidad'] = cleanFileLocality;
+            });
+          }
+          resolve({ rows: jsonData, columns });
+        } catch (err) {
+          reject(err);
+        }
+      }, 20);
+    });
+  }
+
   // Handle uploaded Excel file(s)
   async function handleFiles(baseId, fileList) {
     const files = Array.from(fileList);
     if (!files || files.length === 0) return;
 
-    showToast(`Cargando y procesando ${files.length} archivo(s)...`, 'info');
-
-    for (const file of files) {
+    for (let idx = 0; idx < files.length; idx++) {
+      const file = files[idx];
       try {
+        showToast(
+          files.length > 1
+            ? `Procesando archivo ${idx + 1} de ${files.length}: ${file.name}...`
+            : `Cargando y procesando: ${file.name}...`,
+          'info'
+        );
+        // Yield briefly so UI toast updates smoothly
+        await new Promise(r => setTimeout(r, 15));
+
         const data = await readFileAsArrayBuffer(file);
-        const workbook = XLSX.read(new Uint8Array(data), { type: 'array', cellDates: true });
-        
-        // Pick first sheet
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
-        // Convert sheet to json
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
-        
+        const { rows: jsonData, columns } = await parseExcelBufferAsync(file.name, data);
+
         if (!jsonData || jsonData.length === 0) {
           showToast(`El archivo ${file.name} no contiene filas con datos`, 'warning');
           continue;
-        }
-
-        const columns = Object.keys(jsonData[0]);
-
-        // Clean locality hint from filename (e.g. "01_SAN_VICENTE.xlsb" -> "SAN VICENTE")
-        const cleanFileLocality = file.name
-          .replace(/\.[^/.]+$/, "") // Remove file extension
-          .replace(/^\d+[\s_-]*/, "") // Remove leading numbers (01_, 02-, etc.)
-          .replace(/[_-]+/g, " ") // Replace underscores and hyphens with spaces
-          .trim().toUpperCase();
-
-        // If the file does not have an explicit Localidad column, assign the filename as Localidad
-        const hasLocCol = columns.some(c => /localidad|distrito|sector|zona|anexo/i.test(c));
-        if (!hasLocCol && cleanFileLocality) {
-          jsonData.forEach(row => {
-            if (!row['Localidad']) row['Localidad'] = cleanFileLocality;
-          });
-          if (!columns.includes('Localidad')) columns.push('Localidad');
         }
 
         const fileObj = {
@@ -686,10 +791,20 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(val).trim().toUpperCase();
   }
 
-  // Parse Date Flexible
+  // Parse Date Flexible (optimized for Excel serial numbers and string dates)
   function parseDateFlexible(val) {
     if (!val) return null;
-    
+
+    // Fast path for numeric Excel serial dates (e.g. 45123)
+    if (typeof val === 'number') {
+      if (val > 10000 && val < 80000) {
+        const utcDays = Math.floor(val) - 25569;
+        const utcDate = new Date(utcDays * 86400000);
+        return new Date(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate());
+      }
+      return null;
+    }
+
     // If it's already a Date
     if (val instanceof Date && !isNaN(val)) {
       return val;
@@ -698,18 +813,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const str = String(val).trim();
     if (!str) return null;
 
-    // Excel serial number test (e.g. 45123)
-    if (!isNaN(str) && Number(str) > 30000 && Number(str) < 60000) {
-      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-      return new Date(excelEpoch.getTime() + Number(str) * 86400000);
+    // Numeric string Excel serial number test (e.g. "45123")
+    const numVal = Number(str);
+    if (!isNaN(numVal) && numVal > 10000 && numVal < 80000) {
+      const utcDays = Math.floor(numVal) - 25569;
+      const utcDate = new Date(utcDays * 86400000);
+      return new Date(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate());
     }
 
-    // Format DD/MM/YYYY or DD-MM-YYYY
-    const dmy = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+    // Format DD/MM/YYYY or DD-MM-YYYY (or 2-digit year DD/MM/YY)
+    const dmy = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
     if (dmy) {
-      const d = parseInt(dmy[1], 10);
-      const m = parseInt(dmy[2], 10) - 1;
-      const y = parseInt(dmy[3], 10);
+      let p1 = parseInt(dmy[1], 10);
+      let p2 = parseInt(dmy[2], 10);
+      let y = parseInt(dmy[3], 10);
+      if (y < 100) y += (y >= 50 ? 1900 : 2000);
+      // Handle accidental MM/DD/YY if p2 > 12
+      const d = p2 > 12 ? p2 : p1;
+      const m = (p2 > 12 ? p1 : p2) - 1;
       return new Date(y, m, d);
     }
 
@@ -802,11 +923,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${day}/${month}/${year}`;
   }
 
-  // Cross-referencing Execution
-  btnProcess.addEventListener('click', () => {
-    executeCrossEvaluation();
-  });
-
   // Service Classification & Normalization (Criterio SUNASS)
   // Regla SUNASS: Existen 2 servicios evaluados: 'Agua potable' y 'Alcantarillado'.
   // 'Agua potable' comprende: 'Agua potable' y 'Agua potable y alcantarillado'.
@@ -851,13 +967,21 @@ document.addEventListener('DOMContentLoaded', () => {
     return true;
   }
 
-  // Cross-referencing Execution
+  // Cross-referencing Execution (single listener, non-blocking)
   btnProcess.addEventListener('click', () => {
     executeCrossEvaluation();
   });
 
-  function executeCrossEvaluation() {
+  async function executeCrossEvaluation() {
+    const origBtnHtml = btnProcess.innerHTML;
+    btnProcess.disabled = true;
+    btnProcess.innerHTML = '<i data-lucide="loader" class="animate-spin"></i> <span>Procesando cruce tripartito...</span>';
+    if (window.lucide) window.lucide.createIcons();
+
     showToast('Ejecutando cruce tripartito y desglose regulatorio de servicios...', 'info');
+    await new Promise(r => setTimeout(r, 25));
+
+    try {
 
     const b1 = state.bases[1].data;
     const b2 = state.bases[2].data;
@@ -1107,6 +1231,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     showToast(`¡Cruce finalizado! Se evaluaron ${evaluated.length.toLocaleString()} servicios en ${allSuppliesSet.size.toLocaleString()} conexiones.`, 'success');
+    } catch (err) {
+      console.error('Error en executeCrossEvaluation:', err);
+      showToast(`Error durante el cruce: ${err.message}`, 'error');
+    } finally {
+      btnProcess.disabled = false;
+      btnProcess.innerHTML = origBtnHtml;
+      if (window.lucide) window.lucide.createIcons();
+    }
   }
 
   // Populate Locality Filter Dropdown
