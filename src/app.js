@@ -615,11 +615,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       state.mappings.base2.servicio = findMatch([
         /^tipo.*servicio/,
+        /3\.5.*tipo.*conexion/,
+        /tipo.*conexion/,
+        /tip_cnx/,
         /servicio/,
         /serv/
       ]);
 
       state.mappings.base2.fecha = findMatch([
+        /fecha.*registro.*ficha/,
         /fecha.*ficha/,
         /fecha.*catastr/,
         /fecha.*levantamiento/,
@@ -650,11 +654,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       state.mappings.base3.servicio = findMatch([
         /^tipo.*servicio/,
+        /3\.5.*tipo.*conexion/,
+        /tipo.*conexion/,
+        /tip_cnx/,
         /servicio/,
         /serv/
       ]);
 
       state.mappings.base3.fecha = findMatch([
+        /fecha.*registro.*plataforma.*gis/,
+        /fecha.*plataforma.*gis/,
         /fecha.*registro.*sistema.*grafic/,
         /fecha.*sistema.*grafic/,
         /fecha.*gis/,
