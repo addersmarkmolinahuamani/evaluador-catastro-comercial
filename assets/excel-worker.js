@@ -2,14 +2,14 @@
  * Web Worker para lectura y procesamiento de archivos Excel (.xlsx, .xls, .xlsb, .csv)
  * Evita bloquear el hilo principal (UI) del navegador y recorta filas/columnas fantasma.
  */
-importScripts('vendor/xlsx.full.min.js');
+importScripts('vendor/xlsx.full.min.js?v=2');
 
 function clampWorksheetRange(ws) {
   if (!ws || !ws['!ref']) return;
   const range = XLSX.utils.decode_range(ws['!ref']);
 
-  if (ws['!data'] && Array.isArray(ws['!data'])) {
-    const data = ws['!data'];
+  const data = Array.isArray(ws) ? ws : (Array.isArray(ws['!data']) ? ws['!data'] : null);
+  if (data) {
     let maxRow = 0;
     let maxCol = 0;
     const rowLimit = Math.min(data.length - 1, range.e.r);

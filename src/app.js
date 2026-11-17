@@ -300,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function getExcelWorker() {
     if (excelWorker) return excelWorker;
     try {
-      excelWorker = new Worker('assets/excel-worker.js');
+      excelWorker = new Worker('assets/excel-worker.js?v=2');
       excelWorker.onmessage = (e) => {
         const { id, ok, rows, columns, error } = e.data;
         const cb = workerCallbacks.get(id);
@@ -324,8 +324,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function clampMainThreadRange(ws) {
     if (!ws || !ws['!ref']) return;
     const range = XLSX.utils.decode_range(ws['!ref']);
-    if (ws['!data'] && Array.isArray(ws['!data'])) {
-      const data = ws['!data'];
+    const data = Array.isArray(ws) ? ws : (Array.isArray(ws['!data']) ? ws['!data'] : null);
+    if (data) {
       let maxRow = 0, maxCol = 0;
       const rowLimit = Math.min(data.length - 1, range.e.r);
       for (let r = 0; r <= rowLimit; r++) {
