@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="src/style.css">
+  <link rel="stylesheet" href="src/style.css?v=4">
   
   <!-- Offline-capable vendor scripts -->
   <script src="assets/vendor/xlsx.full.min.js?v=2"></script>
@@ -543,7 +543,10 @@
               </h4>
               <p class="matrix-group-subtitle">Conexiones con fecha de instalación anterior al año regulatorio evaluado (&lt; <span class="lbl-eval-year">2025</span>)</p>
             </div>
-            <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+            <div class="matrix-banner-actions">
+              <div class="loc-multiselect-wrap" id="ms-wrap-s1_antiguos"></div>
+              <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+            </div>
           </div>
           <div class="table-responsive">
             <table class="data-table matrix-image-style" id="s1-matrix-table-antiguos">
@@ -588,7 +591,10 @@
               </h4>
               <p class="matrix-group-subtitle">Conexiones con fecha de instalación durante el año regulatorio evaluado (<span class="lbl-eval-year">2025</span>)</p>
             </div>
-            <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+            <div class="matrix-banner-actions">
+              <div class="loc-multiselect-wrap" id="ms-wrap-s1_nuevos"></div>
+              <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+            </div>
           </div>
           <div class="table-responsive">
             <table class="data-table matrix-image-style" id="s1-matrix-table-nuevos">
@@ -740,7 +746,10 @@
               </h4>
               <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 anterior al año regulatorio evaluado (&lt; <span class="lbl-eval-year">2025</span>)</p>
             </div>
-            <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+            <div class="matrix-banner-actions">
+              <div class="loc-multiselect-wrap" id="ms-wrap-s2_antiguos"></div>
+              <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+            </div>
           </div>
           <div class="table-responsive">
             <table class="data-table matrix-stage2-table" id="s2-matrix-table-antiguos">
@@ -785,7 +794,10 @@
               </h4>
               <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 durante el año regulatorio evaluado (<span class="lbl-eval-year">2025</span>)</p>
             </div>
-            <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+            <div class="matrix-banner-actions">
+              <div class="loc-multiselect-wrap" id="ms-wrap-s2_nuevos"></div>
+              <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+            </div>
           </div>
           <div class="table-responsive">
             <table class="data-table matrix-stage2-table" id="s2-matrix-table-nuevos">
@@ -944,7 +956,10 @@
               </h4>
               <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 anterior al año regulatorio evaluado (&lt; <span class="lbl-eval-year">2025</span>)</p>
             </div>
-            <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+            <div class="matrix-banner-actions">
+              <div class="loc-multiselect-wrap" id="ms-wrap-s3_antiguos"></div>
+              <span class="badge badge-info" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Antiguos</span>
+            </div>
           </div>
           <div class="table-responsive">
             <table class="data-table matrix-stage3-table" id="s3-matrix-table-antiguos">
@@ -989,7 +1004,10 @@
               </h4>
               <p class="matrix-group-subtitle">Conexiones con fecha de instalación en Base 1 durante el año regulatorio evaluado (<span class="lbl-eval-year">2025</span>)</p>
             </div>
-            <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+            <div class="matrix-banner-actions">
+              <div class="loc-multiselect-wrap" id="ms-wrap-s3_nuevos"></div>
+              <span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; font-weight:600;">Usuarios Nuevos</span>
+            </div>
           </div>
           <div class="table-responsive">
             <table class="data-table matrix-stage3-table" id="s3-matrix-table-nuevos">
@@ -1376,6 +1394,6 @@
   </div>
 
   <!-- Main Application Script -->
-  <script src="src/app.js?v=3"></script>
+  <script src="src/app.js?v=4"></script>
 </body>
 </html>

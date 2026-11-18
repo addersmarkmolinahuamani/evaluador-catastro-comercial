@@ -2433,6 +2433,170 @@ document.addEventListener('DOMContentLoaded', () => {
     if (s4Stat) s4Stat.textContent = `${(state.stats?.validCount || 0).toLocaleString()} cumplen meta`;
   }
 
+  // Multi-select locality filter controller for Antiguos and Nuevos matrices
+  state.matrixLocControllers = {};
+
+  // Close open multi-select dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.loc-multiselect-wrap')) {
+      document.querySelectorAll('.loc-ms-dropdown').forEach(d => d.classList.add('hidden'));
+    }
+  });
+
+  function setupMatrixMultiSelect(key, allLocalities, targetLocMap, countProp, renderCallback, groupType) {
+    const wrap = document.getElementById(`ms-wrap-${key}`);
+    if (!wrap) return;
+
+    const selectedSet = new Set(allLocalities);
+
+    function getFilteredSortedLocs() {
+      return allLocalities.filter(loc => selectedSet.has(loc));
+    }
+
+    function updateButtonLabel(btnEl) {
+      const total = allLocalities.length;
+      const sel = selectedSet.size;
+      const isFiltered = sel < total;
+      btnEl.classList.toggle('has-filter', isFiltered);
+      const badgeText = sel === total ? `Todas (${total})` : `${sel} de ${total}`;
+      btnEl.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        <span>Localidades:</span>
+        <span class="loc-ms-count-badge">${badgeText}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      `;
+    }
+
+    wrap.innerHTML = '';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'loc-ms-btn';
+    btn.title = 'Mostrar u ocultar localidades (opción múltiple)';
+    updateButtonLabel(btn);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'loc-ms-dropdown hidden';
+
+    const header = document.createElement('div');
+    header.className = 'loc-ms-header';
+    header.innerHTML = `
+      <span class="loc-ms-title">Localidades (${allLocalities.length})</span>
+      <div class="loc-ms-quick-btns">
+        <button type="button" class="loc-ms-quick-btn" data-action="all">Todas</button>
+        <button type="button" class="loc-ms-quick-btn" data-action="none">Ninguna</button>
+      </div>
+    `;
+
+    const list = document.createElement('div');
+    list.className = 'loc-ms-list';
+
+    const checkboxes = [];
+    allLocalities.forEach(loc => {
+      const rec = targetLocMap[loc];
+      const count = rec && rec[countProp] ? rec[countProp].size : 0;
+
+      const label = document.createElement('label');
+      label.className = 'loc-ms-item';
+
+      const left = document.createElement('div');
+      left.className = 'loc-ms-item-left';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'loc-ms-checkbox';
+      cb.checked = true;
+      cb.dataset.loc = loc;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'loc-ms-name';
+      nameSpan.textContent = loc;
+      nameSpan.title = loc;
+
+      left.appendChild(cb);
+      left.appendChild(nameSpan);
+
+      const countSpan = document.createElement('span');
+      countSpan.className = 'loc-ms-item-count';
+      countSpan.textContent = count.toLocaleString();
+
+      label.appendChild(left);
+      label.appendChild(countSpan);
+      list.appendChild(label);
+      checkboxes.push(cb);
+
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedSet.add(loc);
+        else selectedSet.delete(loc);
+        updateButtonLabel(btn);
+        renderCallback(getFilteredSortedLocs());
+      });
+    });
+
+    const footer = document.createElement('div');
+    footer.className = 'loc-ms-footer';
+    const syncBtn = document.createElement('button');
+    syncBtn.type = 'button';
+    syncBtn.className = 'loc-ms-sync-btn';
+    syncBtn.textContent = `Aplicar selección a R1, R2 y R3 (${groupType === 'antiguos' ? 'Antiguos' : 'Nuevos'})`;
+    syncBtn.addEventListener('click', () => {
+      ['s1', 's2', 's3'].forEach(stagePrefix => {
+        const targetKey = `${stagePrefix}_${groupType}`;
+        const ctrl = state.matrixLocControllers[targetKey];
+        if (ctrl && targetKey !== key) {
+          ctrl.setSelection(Array.from(selectedSet));
+        }
+      });
+      showToast(`Filtro de localidades sincronizado en Resultados 1, 2 y 3 (${groupType === 'antiguos' ? 'Usuarios Antiguos' : 'Usuarios Nuevos'})`, 'info');
+    });
+    footer.appendChild(syncBtn);
+
+    dropdown.appendChild(header);
+    dropdown.appendChild(list);
+    dropdown.appendChild(footer);
+
+    wrap.appendChild(btn);
+    wrap.appendChild(dropdown);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wasHidden = dropdown.classList.contains('hidden');
+      document.querySelectorAll('.loc-ms-dropdown').forEach(d => d.classList.add('hidden'));
+      if (wasHidden) dropdown.classList.remove('hidden');
+    });
+
+    header.querySelectorAll('.loc-ms-quick-btn').forEach(qBtn => {
+      qBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const act = qBtn.dataset.action;
+        selectedSet.clear();
+        if (act === 'all') {
+          allLocalities.forEach(l => selectedSet.add(l));
+        }
+        checkboxes.forEach(cb => {
+          cb.checked = selectedSet.has(cb.dataset.loc);
+        });
+        updateButtonLabel(btn);
+        renderCallback(getFilteredSortedLocs());
+      });
+    });
+
+    state.matrixLocControllers[key] = {
+      setSelection(locsArray) {
+        selectedSet.clear();
+        const allowed = new Set(locsArray);
+        allLocalities.forEach(l => {
+          if (allowed.has(l)) selectedSet.add(l);
+        });
+        checkboxes.forEach(cb => {
+          cb.checked = selectedSet.has(cb.dataset.loc);
+        });
+        updateButtonLabel(btn);
+        renderCallback(getFilteredSortedLocs());
+      }
+    };
+  }
+
   // ------------------------------------------
   // ETAPA 1: Conexiones Totales (Base 1)
   // ------------------------------------------
@@ -2636,6 +2800,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tbodyEl.appendChild(tr);
       });
 
+      if (localitiesList.length === 0) {
+        tbodyEl.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">Ninguna localidad seleccionada. Marca al menos una localidad en el filtro desplegable.</td></tr>';
+      }
+
       if (tfootEl) {
         tfootEl.innerHTML = `
           <tr class="tr-img-total">
@@ -2664,20 +2832,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const sortedLocs = Object.keys(locMapTotal).sort();
 
     // 1. Matriz de Conexiones - Usuarios Antiguos
-    renderMatrixTableRows(
-      locMapAntiguos,
-      document.getElementById('s1-matrix-body-antiguos'),
-      document.getElementById('s1-matrix-footer-antiguos'),
-      sortedLocs
-    );
+    const s1AntBody = document.getElementById('s1-matrix-body-antiguos');
+    const s1AntFoot = document.getElementById('s1-matrix-footer-antiguos');
+    renderMatrixTableRows(locMapAntiguos, s1AntBody, s1AntFoot, sortedLocs);
+    setupMatrixMultiSelect('s1_antiguos', sortedLocs, locMapAntiguos, 'total', (filteredLocs) => {
+      renderMatrixTableRows(locMapAntiguos, s1AntBody, s1AntFoot, filteredLocs);
+    }, 'antiguos');
 
     // 2. Matriz de Conexiones - Usuarios Nuevos
-    renderMatrixTableRows(
-      locMapNuevos,
-      document.getElementById('s1-matrix-body-nuevos'),
-      document.getElementById('s1-matrix-footer-nuevos'),
-      sortedLocs
-    );
+    const s1NueBody = document.getElementById('s1-matrix-body-nuevos');
+    const s1NueFoot = document.getElementById('s1-matrix-footer-nuevos');
+    renderMatrixTableRows(locMapNuevos, s1NueBody, s1NueFoot, sortedLocs);
+    setupMatrixMultiSelect('s1_nuevos', sortedLocs, locMapNuevos, 'total', (filteredLocs) => {
+      renderMatrixTableRows(locMapNuevos, s1NueBody, s1NueFoot, filteredLocs);
+    }, 'nuevos');
 
     // 3. Matriz Consolidada Total (Padrón Base Completo)
     renderMatrixTableRows(
@@ -2977,6 +3145,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tbodyEl.appendChild(tr);
       });
 
+      if (localitiesList.length === 0) {
+        tbodyEl.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">Ninguna localidad seleccionada. Marca al menos una localidad en el filtro desplegable.</td></tr>';
+      }
+
       if (tfootEl) {
         tfootEl.innerHTML = `
           <tr class="tr-total-footer">
@@ -3004,20 +3176,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const sortedLocs = Object.keys(locMapTotal).sort();
 
     // 1. Matriz de Fichas - Usuarios Antiguos
-    renderStage2MatrixTableRows(
-      locMapAntiguos,
-      document.getElementById('s2-matrix-body-antiguos'),
-      document.getElementById('s2-matrix-footer-antiguos'),
-      sortedLocs
-    );
+    const s2AntBody = document.getElementById('s2-matrix-body-antiguos');
+    const s2AntFoot = document.getElementById('s2-matrix-footer-antiguos');
+    renderStage2MatrixTableRows(locMapAntiguos, s2AntBody, s2AntFoot, sortedLocs);
+    setupMatrixMultiSelect('s2_antiguos', sortedLocs, locMapAntiguos, 'rem', (filteredLocs) => {
+      renderStage2MatrixTableRows(locMapAntiguos, s2AntBody, s2AntFoot, filteredLocs);
+    }, 'antiguos');
 
     // 2. Matriz de Fichas - Usuarios Nuevos
-    renderStage2MatrixTableRows(
-      locMapNuevos,
-      document.getElementById('s2-matrix-body-nuevos'),
-      document.getElementById('s2-matrix-footer-nuevos'),
-      sortedLocs
-    );
+    const s2NueBody = document.getElementById('s2-matrix-body-nuevos');
+    const s2NueFoot = document.getElementById('s2-matrix-footer-nuevos');
+    renderStage2MatrixTableRows(locMapNuevos, s2NueBody, s2NueFoot, sortedLocs);
+    setupMatrixMultiSelect('s2_nuevos', sortedLocs, locMapNuevos, 'rem', (filteredLocs) => {
+      renderStage2MatrixTableRows(locMapNuevos, s2NueBody, s2NueFoot, filteredLocs);
+    }, 'nuevos');
 
     // 3. Matriz Consolidada Total
     renderStage2MatrixTableRows(
@@ -3344,6 +3516,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tbodyEl.appendChild(tr);
       });
 
+      if (localitiesList.length === 0) {
+        tbodyEl.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">Ninguna localidad seleccionada. Marca al menos una localidad en el filtro desplegable.</td></tr>';
+      }
+
       if (tfootEl) {
         tfootEl.innerHTML = `
           <tr class="tr-total-footer">
@@ -3371,20 +3547,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const sortedLocs = Object.keys(locMapTotal).sort();
 
     // 1. Matriz QGIS - Usuarios Antiguos
-    renderStage3MatrixTableRows(
-      locMapAntiguos,
-      document.getElementById('s3-matrix-body-antiguos'),
-      document.getElementById('s3-matrix-footer-antiguos'),
-      sortedLocs
-    );
+    const s3AntBody = document.getElementById('s3-matrix-body-antiguos');
+    const s3AntFoot = document.getElementById('s3-matrix-footer-antiguos');
+    renderStage3MatrixTableRows(locMapAntiguos, s3AntBody, s3AntFoot, sortedLocs);
+    setupMatrixMultiSelect('s3_antiguos', sortedLocs, locMapAntiguos, 'rem', (filteredLocs) => {
+      renderStage3MatrixTableRows(locMapAntiguos, s3AntBody, s3AntFoot, filteredLocs);
+    }, 'antiguos');
 
     // 2. Matriz QGIS - Usuarios Nuevos
-    renderStage3MatrixTableRows(
-      locMapNuevos,
-      document.getElementById('s3-matrix-body-nuevos'),
-      document.getElementById('s3-matrix-footer-nuevos'),
-      sortedLocs
-    );
+    const s3NueBody = document.getElementById('s3-matrix-body-nuevos');
+    const s3NueFoot = document.getElementById('s3-matrix-footer-nuevos');
+    renderStage3MatrixTableRows(locMapNuevos, s3NueBody, s3NueFoot, sortedLocs);
+    setupMatrixMultiSelect('s3_nuevos', sortedLocs, locMapNuevos, 'rem', (filteredLocs) => {
+      renderStage3MatrixTableRows(locMapNuevos, s3NueBody, s3NueFoot, filteredLocs);
+    }, 'nuevos');
 
     // 3. Matriz Consolidada Total
     renderStage3MatrixTableRows(
