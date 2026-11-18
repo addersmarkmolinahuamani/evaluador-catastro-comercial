@@ -800,6 +800,21 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(val).trim().toUpperCase();
   }
 
+  // Standardize Localidad name to avoid cross-locality homonym collisions
+  function normalizeLocalityName(val) {
+    if (val === null || val === undefined) return 'SIN LOCALIDAD';
+    const str = String(val).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (!str) return 'SIN LOCALIDAD';
+    if (str === 'SANTA CRUZ') return 'SANTA CRUZ DE FLORES';
+    return str;
+  }
+
+  function extractRowLocality(row, mappedCol) {
+    if (!row) return 'SIN LOCALIDAD';
+    const raw = (mappedCol ? row[mappedCol] : null) || row['Localidad'] || row['LOCALIDAD'] || row['\nLocalidad\n'] || row['Distrito'] || row['Sector'];
+    return normalizeLocalityName(raw);
+  }
+
   // Parse Date Flexible (optimized for Excel serial numbers and string dates)
   function parseDateFlexible(val) {
     if (!val) return null;
@@ -1000,70 +1015,84 @@ document.addEventListener('DOMContentLoaded', () => {
     const m2 = state.mappings.base2;
     const m3 = state.mappings.base3;
 
-    // Index Base 1 (Conexiones Totales Padrón)
+    // Index Base 1 (Conexiones Totales Padrón) using composite key (Localidad || Suministro)
     const base1Map = new Map();
+    const base1BySumOnly = new Map();
     let b1LocalityFilteredOut = 0;
 
     b1.forEach(row => {
       const sum = normalizeSuministro(row[m1.suministro]);
       if (sum) {
+        const loc = extractRowLocality(row, m1.localidad);
         // Filtro opcional por localidad en Base 1 si no es ALL
         if (state.base1LocalityFilter && state.base1LocalityFilter !== 'ALL' && m1.localidad) {
-          const rawLoc = row[m1.localidad];
-          const normLoc = rawLoc ? String(rawLoc).trim().toUpperCase() : '';
-          if (normLoc !== state.base1LocalityFilter) {
+          if (loc !== state.base1LocalityFilter) {
             b1LocalityFilteredOut++;
             return;
           }
         }
-        base1Map.set(sum, row);
+        const key = `${loc}||${sum}`;
+        base1Map.set(key, { row, sum, loc });
+        if (!base1BySumOnly.has(sum)) base1BySumOnly.set(sum, { key, row, sum, loc });
       }
     });
 
-    // Index Base 2 (Fichas Catastrales en Campo)
+    // Index Base 2 (Fichas Catastrales en Campo) using composite key (Localidad || Suministro)
     const base2Map = new Map();
     b2.forEach(row => {
       const sum = normalizeSuministro(row[m2.suministro]);
       if (sum) {
+        let loc = extractRowLocality(row, m2.localidad);
+        if (loc === 'SIN LOCALIDAD' && base1BySumOnly.has(sum)) {
+          loc = base1BySumOnly.get(sum).loc;
+        }
+        const key = `${loc}||${sum}`;
         const rawDate = row[m2.fecha];
         const dateObj = parseDateFlexible(rawDate);
         const item = {
           raw: row,
+          loc,
           dateObj: dateObj,
           isValidDate: isDateInEvaluation(dateObj),
           dateStr: formatDateDisplay(dateObj),
           servicioRaw: m2.servicio ? (row[m2.servicio] || '') : ''
         };
-        if (!base2Map.has(sum)) {
-          base2Map.set(sum, []);
+        if (!base2Map.has(key)) {
+          base2Map.set(key, []);
         }
-        base2Map.get(sum).push(item);
+        base2Map.get(key).push(item);
       }
     });
 
-    // Index Base 3 (Tabla Atributiva QGIS)
+    // Index Base 3 (Tabla Atributiva QGIS) using composite key (Localidad || Suministro)
     const base3Map = new Map();
     b3.forEach(row => {
       const sum = normalizeSuministro(row[m3.suministro]);
       if (sum) {
+        let loc = extractRowLocality(row, m3.localidad);
+        if (loc === 'SIN LOCALIDAD' && base1BySumOnly.has(sum)) {
+          loc = base1BySumOnly.get(sum).loc;
+        }
+        const key = `${loc}||${sum}`;
         const rawDate = row[m3.fecha];
         const dateObj = parseDateFlexible(rawDate);
         const item = {
           raw: row,
+          loc,
           dateObj: dateObj,
           isValidDate: isDateInEvaluation(dateObj),
           dateStr: formatDateDisplay(dateObj),
           codigo: m3.codigo ? (row[m3.codigo] || '') : '',
           servicioRaw: m3.servicio ? (row[m3.servicio] || '') : ''
         };
-        if (!base3Map.has(sum)) {
-          base3Map.set(sum, []);
+        if (!base3Map.has(key)) {
+          base3Map.set(key, []);
         }
-        base3Map.get(sum).push(item);
+        base3Map.get(key).push(item);
       }
     });
 
-    // Combined universe of all unique supplies
+    // Combined universe of all unique (Localidad || Suministro) keys
     const allSuppliesSet = new Set([
       ...base1Map.keys(),
       ...base2Map.keys(),
@@ -1072,27 +1101,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const evaluated = [];
 
-    // Helper to get raw locality
-    function extractLocality(r1, r2List, r3List) {
-      if (r1) {
-        const loc1 = (m1.localidad ? r1[m1.localidad] : null) || r1['Localidad'] || r1['LOCALIDAD'] || r1['Distrito'] || r1['Sector'];
-        if (loc1) return String(loc1).trim().toUpperCase();
-      }
-      if (r2List && r2List.length > 0) {
-        const loc2 = (m2.localidad ? r2List[0].raw[m2.localidad] : null) || r2List[0].raw['Localidad'] || r2List[0].raw['LOCALIDAD'] || r2List[0].raw['Sector'];
-        if (loc2) return String(loc2).trim().toUpperCase();
-      }
-      if (r3List && r3List.length > 0) {
-        const loc3 = (m3.localidad ? r3List[0].raw[m3.localidad] : null) || r3List[0].raw['Localidad'] || r3List[0].raw['LOCALIDAD'] || r3List[0].raw['Sector'];
-        if (loc3) return String(loc3).trim().toUpperCase();
-      }
-      return 'SIN LOCALIDAD';
-    }
-
-    allSuppliesSet.forEach(suministro => {
-      const r1 = base1Map.get(suministro);
-      const r2List = base2Map.get(suministro) || [];
-      const r3List = base3Map.get(suministro) || [];
+    allSuppliesSet.forEach(compKey => {
+      const [keyLoc, suministro] = compKey.split('||');
+      const b1Entry = base1Map.get(compKey);
+      const r1 = b1Entry ? b1Entry.row : null;
+      const r2List = base2Map.get(compKey) || [];
+      const r3List = base3Map.get(compKey) || [];
 
       const inBase1 = !!r1;
 
@@ -1118,7 +1132,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const usuario = r1 ? (r1[m1.usuario] || '') : (r2List.length > 0 ? (r2List[0].raw['Usuario'] || r2List[0].raw['Titular'] || '') : '');
       const direccion = r1 ? (r1[m1.direccion] || '') : (r2List.length > 0 ? (r2List[0].raw['Direccion'] || r2List[0].raw['Predio'] || '') : '');
-      const localidad = extractLocality(r1, r2List, r3List);
+      const localidad = keyLoc || 'SIN LOCALIDAD';
 
       // Desglose regulatorio SUNASS: Crear una fila por cada servicio aplicable ('Agua potable' y/o 'Alcantarillado')
       targetServices.forEach(servicioCatastro => {
@@ -1315,22 +1329,23 @@ document.addEventListener('DOMContentLoaded', () => {
       return locMap[loc];
     }
 
-    // Build a map of supply to userType for segmentation filtering
+    // Build a map of (localidad || supply) to userType for segmentation filtering
     const supplyUserTypeMap = new Map();
-    state.evaluatedRecords.forEach(r => supplyUserTypeMap.set(r.suministro, r.tipoUsuario));
+    state.evaluatedRecords.forEach(r => supplyUserTypeMap.set(`${r.localidad}||${r.suministro}`, r.tipoUsuario));
     state.stages.s1.data.forEach(r => {
-      if (!supplyUserTypeMap.has(r.suministro)) supplyUserTypeMap.set(r.suministro, r.tipoUsuario);
+      const k = `${r.localidad}||${r.suministro}`;
+      if (!supplyUserTypeMap.has(k)) supplyUserTypeMap.set(k, r.tipoUsuario);
     });
 
-    const isMatchUserType = (sum) => {
+    const isMatchUserType = (r) => {
       if (!state.userTypeFilter || state.userTypeFilter === 'ALL') return true;
-      const ut = supplyUserTypeMap.get(sum) || 'ANTIGUO';
+      const ut = r.tipoUsuario || supplyUserTypeMap.get(`${r.localidad}||${r.suministro}`) || 'ANTIGUO';
       return ut === state.userTypeFilter;
     };
 
     // Populate Base 1 Conexiones Totales
     state.stages.s1.data.forEach(r => {
-      if (!isMatchUserType(r.suministro)) return;
+      if (!isMatchUserType(r)) return;
       const m = getLoc(r.localidad);
       m.b1_tot.add(r.suministro);
       if (r.hasAP) m.b1_ap.add(r.suministro);
@@ -1339,7 +1354,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Populate Base 2 Fichas Catastrales
     state.stages.s2.data.forEach(r => {
-      if (!isMatchUserType(r.suministro)) return;
+      if (!isMatchUserType(r)) return;
       const m = getLoc(r.localidad);
       m.b2_tot.add(r.suministro);
       if (r.hasAP) m.b2_tot_ap.add(r.suministro);
@@ -1360,7 +1375,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Populate Base 3 QGIS
     state.stages.s3.data.forEach(r => {
-      if (!isMatchUserType(r.suministro)) return;
+      if (!isMatchUserType(r)) return;
       const m = getLoc(r.localidad);
       m.b3_tot.add(r.suministro);
       if (r.hasAP) m.b3_tot_ap.add(r.suministro);
@@ -1381,7 +1396,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Populate Cumplen Meta from evaluatedRecords
     state.evaluatedRecords.forEach(r => {
-      if (!isMatchUserType(r.suministro)) return;
+      if (!isMatchUserType(r)) return;
       if (r.status === 'CUMPLE') {
         const m = getLoc(r.localidad);
         m.cumplen.add(r.suministro);
@@ -2660,8 +2675,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dateObj = rawDate ? parseDateFlexible(rawDate) : null;
       const userTypeInfo = classifyUserType(dateObj);
 
-      const rawLoc = m1.localidad ? row[m1.localidad] : (row['Localidad'] || row['LOCALIDAD'] || row['Sector']);
-      const localidad = rawLoc ? String(rawLoc).trim().toUpperCase() : 'SIN LOCALIDAD';
+      const localidad = extractRowLocality(row, m1.localidad);
       const rawServ = m1.servicio ? row[m1.servicio] : 'Agua potable y alcantarillado';
       const serviciosCatastro = getRegulatoryServices(rawServ);
       const hasAP = serviciosCatastro.includes('Agua potable');
@@ -2948,10 +2962,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function computeAndRenderStage2() {
     const b2 = state.bases[2].data;
     const m2 = state.mappings.base2;
-    // Map with Base 1 items for exact user classification and validation status according strictly to Base 1:
-    const b1Lookup = new Map();
+    // Map with Base 1 items by composite key (Localidad || Suministro) to prevent homonym collisions across localities:
+    const b1ByLocSum = new Map();
+    const b1BySumOnly = new Map();
     state.stages.s1.data.forEach(item => {
-      b1Lookup.set(item.suministro, item);
+      b1ByLocSum.set(`${item.localidad}||${item.suministro}`, item);
+      if (!b1BySumOnly.has(item.suministro)) {
+        b1BySumOnly.set(item.suministro, item);
+      }
     });
 
     const items = [];
@@ -3004,12 +3022,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const sum = normalizeSuministro(row[m2.suministro]);
       if (!sum) return;
 
+      let localidad = extractRowLocality(row, m2.localidad);
+      if (localidad === 'SIN LOCALIDAD' && b1BySumOnly.has(sum)) {
+        localidad = b1BySumOnly.get(sum).localidad;
+      }
+
       const rawDate = row[m2.fecha];
       const dateObj = parseDateFlexible(rawDate);
       const inYear = isDateInEvaluation(dateObj);
-      const b1Info = b1Lookup.get(sum);
+      const b1Info = b1ByLocSum.get(`${localidad}||${sum}`) || (localidad === 'SIN LOCALIDAD' ? b1BySumOnly.get(sum) : null);
       const inBase1 = !!b1Info;
-      // Validado en Resultado 1 (Base 1 con datos completos/cumple)
+      // Validado en Resultado 1 (Base 1 con datos completos/cumple en la MISMA localidad)
       const isValidInR1 = inBase1 && !!b1Info.cumple;
       const isParaAnalizar = isValidInR1;
       const isValid = isParaAnalizar && inYear;
@@ -3024,7 +3047,7 @@ document.addEventListener('DOMContentLoaded', () => {
       let obsLabel = '';
       if (!inBase1) {
         obsType = 'OBS_B1';
-        obsLabel = 'No figura en Base 1 (Excluido de análisis)';
+        obsLabel = 'No figura en Base 1 para esta localidad (Excluido de análisis)';
         obsR1Count++;
       } else if (!b1Info.cumple) {
         obsType = 'OBS_R1_INVALID';
@@ -3036,8 +3059,6 @@ document.addEventListener('DOMContentLoaded', () => {
         obsAnoCount++;
       }
 
-      const rawLoc = (m2.localidad ? row[m2.localidad] : null) || row['Localidad'] || row['LOCALIDAD'] || row['Sector'] || 'SIN LOCALIDAD';
-      const localidad = String(rawLoc).trim().toUpperCase();
       const rawServ = m2.servicio ? (row[m2.servicio] || '') : 'Agua y alcantarillado';
       const serviciosCatastro = getRegulatoryServices(rawServ);
       const hasAP = serviciosCatastro.includes('Agua potable');
@@ -3306,13 +3327,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function computeAndRenderStage3() {
     const b3 = state.bases[3].data;
     const m3 = state.mappings.base3;
-    // Suministros validados en Base 2 (fichas válidas en año y en Base 1 / Resultado 1)
-    const validFichasSet = new Set(state.stages.s2.data.filter(i => i.isValid).map(i => i.suministro));
+    // Suministros validados en Base 2 por llave compuesta (Localidad || Suministro)
+    const validFichasByLocSum = new Set(state.stages.s2.data.filter(i => i.isValid).map(i => `${i.localidad}||${i.suministro}`));
+    const validFichasBySumOnly = new Set(state.stages.s2.data.filter(i => i.isValid).map(i => i.suministro));
 
-    // Lookup de Base 1 para clasificar en Antiguos y Nuevos por fecha de instalación de conexión
-    const b1Lookup = new Map();
+    // Lookup de Base 1 por (Localidad || Suministro) para clasificar en Antiguos y Nuevos
+    const b1ByLocSum = new Map();
+    const b1BySumOnly = new Map();
     state.stages.s1.data.forEach(r => {
-      b1Lookup.set(r.suministro, r);
+      b1ByLocSum.set(`${r.localidad}||${r.suministro}`, r);
+      if (!b1BySumOnly.has(r.suministro)) b1BySumOnly.set(r.suministro, r);
     });
 
     const items = [];
@@ -3364,11 +3388,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const sum = normalizeSuministro(row[m3.suministro]);
       if (!sum) return;
 
+      let localidad = extractRowLocality(row, m3.localidad);
+      if (localidad === 'SIN LOCALIDAD' && b1BySumOnly.has(sum)) {
+        localidad = b1BySumOnly.get(sum).localidad;
+      }
+
       const rawDate = row[m3.fecha];
       const dateObj = parseDateFlexible(rawDate);
       const inYear = isDateInEvaluation(dateObj);
-      const inValidFichas = validFichasSet.has(sum);
-      // Para analizar: registros de Base 3 validados previamente en Resultado 2
+      const inValidFichas = validFichasByLocSum.has(`${localidad}||${sum}`) || (localidad === 'SIN LOCALIDAD' && validFichasBySumOnly.has(sum));
+      // Para analizar: registros de Base 3 validados previamente en Resultado 2 en la misma localidad
       const isParaAnalizar = inValidFichas;
       const isValid = isParaAnalizar && inYear;
 
@@ -3385,14 +3414,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const codigo = m3.codigo ? (row[m3.codigo] || '') : '';
-      const rawLoc = (m3.localidad ? row[m3.localidad] : null) || row['Localidad'] || row['LOCALIDAD'] || row['Sector'] || 'SIN LOCALIDAD';
-      const localidad = String(rawLoc).trim().toUpperCase();
       const rawServ = m3.servicio ? (row[m3.servicio] || '') : 'Agua y alcantarillado';
       const serviciosCatastro = getRegulatoryServices(rawServ);
       const hasAP = serviciosCatastro.includes('Agua potable');
       const hasAL = serviciosCatastro.includes('Alcantarillado');
 
-      const b1Info = b1Lookup.get(sum);
+      const b1Info = b1ByLocSum.get(`${localidad}||${sum}`) || (localidad === 'SIN LOCALIDAD' ? b1BySumOnly.get(sum) : null);
       // Clasificación de usuarios antiguos y nuevos estrictamente según Base 1
       const isAntiguo = b1Info ? b1Info.isAntiguo : true;
       const isNuevo = b1Info ? b1Info.isNuevo : false;
